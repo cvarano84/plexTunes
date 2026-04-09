@@ -5,8 +5,9 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+COPY package.json ./
+COPY yarn.lock* ./
+RUN yarn install
 
 # Rebuild the source code only when needed
 FROM base AS builder
