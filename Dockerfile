@@ -3,21 +3,21 @@ FROM node:18-alpine AS base
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat openssl
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 WORKDIR /app
 
-COPY package.json ./
-COPY yarn.lock* ./
+COPY package.json yarn.lock .yarnrc.yml* ./
 RUN yarn install
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Fix Prisma schema output path for Docker (remove hardcoded dev path)
 RUN sed -i '/output.*=.*"\/home/d' prisma/schema.prisma && \
-    # Add linux-musl target for Alpine
     sed -i 's/binaryTargets = \[.*\]/binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]/' prisma/schema.prisma && \
     npx prisma generate
 
@@ -47,7 +47,6 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Entrypoint script for running migrations on startup
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
