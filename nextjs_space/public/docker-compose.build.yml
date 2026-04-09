@@ -1,8 +1,11 @@
+# Use this compose file if building locally instead of pulling from Docker Hub
 version: '3.8'
 
 services:
   plextunes:
-    image: gilligan5000/plextunes:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: plexTunes
     ports:
       - "30071:3000"
