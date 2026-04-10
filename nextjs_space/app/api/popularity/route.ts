@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
       title: t?.title ?? '',
     })) ?? [];
 
-    const popularityMap = await getBatchPopularity(trackInputs);
+    const providerOrder = body?.providerOrder ?? undefined;
+    const disabledProviders = body?.disabledProviders ?? undefined;
+    const popularityMap = await getBatchPopularity(trackInputs, providerOrder, disabledProviders);
 
     // Update tracks with popularity
     let updated = 0;

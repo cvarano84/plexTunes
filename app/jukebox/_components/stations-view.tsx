@@ -32,10 +32,26 @@ const DECADE_LABELS: Record<string, string> = {
 
 function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; onPlay: () => void; isPlaying: boolean; cardSize: number }) {
   const sampleArt = station?.sampleArt ?? [];
+  const stationType = station?.stationType ?? 'standard';
   const decadeLabel = DECADE_LABELS[station?.decade ?? ''] ?? station?.decade ?? '';
   const genreLabel = station?.genre ?? '';
+  const stationName = station?.name ?? `${decadeLabel} ${genreLabel}`.trim();
   const labelSize = cardSize > 250 ? 'text-lg' : cardSize > 180 ? 'text-base' : 'text-sm';
   const subSize = cardSize > 250 ? 'text-sm' : 'text-xs';
+
+  // Determine grid: 3x3 if we have 9+ images, 2x2 if 4+, else single
+  const useGrid3 = sampleArt.length >= 9;
+  const useGrid2 = sampleArt.length >= 4;
+  const gridCols = useGrid3 ? 3 : 2;
+  const gridCount = useGrid3 ? 9 : 4;
+  const imgSize = Math.round(cardSize / gridCols);
+
+  // Color for special station types
+  const bgGradient = stationType === 'hits'
+    ? 'from-amber-900/60 to-orange-950/40'
+    : stationType === 'most-played'
+      ? 'from-rose-900/60 to-pink-950/40'
+      : DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted';
 
   return (
     <motion.button
@@ -48,12 +64,12 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
       className="flex-shrink-0 group relative"
       style={{ width: cardSize, height: cardSize }}
     >
-      <div className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br ${DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted'}`}>
-        {sampleArt.length >= 4 ? (
-          <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
-            {sampleArt.slice(0, 4).map((thumb: string, i: number) => (
+      <div className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br ${bgGradient}`}>
+        {useGrid2 ? (
+          <div className="w-full h-full" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, 1fr)`, gridTemplateRows: `repeat(${gridCols}, 1fr)` }}>
+            {sampleArt.slice(0, gridCount).map((thumb: string, i: number) => (
               <div key={i} className="w-full h-full overflow-hidden">
-                <PlexImage thumb={thumb} alt="" size={Math.round(cardSize)} />
+                <PlexImage thumb={thumb} alt="" size={imgSize} />
               </div>
             ))}
           </div>
@@ -78,7 +94,7 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
         </div>
         <div className="absolute bottom-0 left-0 right-0 p-3">
           <h4 className={`font-display font-bold ${labelSize} text-white leading-tight`}>
-            {decadeLabel} {genreLabel}
+            {stationName}
           </h4>
           <p className={`${subSize} text-white/60 mt-0.5`}>{station?.trackCount ?? 0} tracks</p>
         </div>

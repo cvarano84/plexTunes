@@ -21,58 +21,84 @@ export async function GET() {
       orderBy: [{ decade: 'asc' }, { genre: 'asc' }],
     });
 
-    // For each station, get sample album art with better randomization
+    // For each station, get sample album art with randomization
     const stationsWithArt = await Promise.all(
       (stations ?? []).map(async (station) => {
         try {
-          // Get a larger pool and randomize
+          const stationType = station.stationType ?? 'standard';
+
+          // Build query based on station type
+          let where: any = { thumb: { not: null } };
+
+          if (stationType === 'most-played') {
+            where.playCount = { gt: 0 };
+          } else if (stationType === 'hits') {
+            if (station.minPopularity > 0) where.popularity = { gte: station.minPopularity };
+            if (station.genre) {
+              // Will filter client-side by genre mapping
+            }
+            if (station.decade) {
+              where.year = { not: null };
+            }
+          } else {
+            where.year = { not: null };
+          }
+
           const matchingTracks = await prisma.cachedTrack.findMany({
-            where: {
-              year: { not: null },
-              thumb: { not: null },
-            },
+            where,
             include: {
               album: { select: { thumb: true } },
               artist: { select: { name: true } },
             },
             take: 2000,
+            ...(stationType === 'most-played' ? { orderBy: { playCount: 'desc' } } : {}),
           });
 
-          const filtered = matchingTracks.filter((t) => {
-            const trackDecade = getDecadeFromYear(t.year);
-            if (trackDecade !== station.decade) return false;
-            const trackGenres = mapGenreToStation(t.genre);
-            return trackGenres.includes(station.genre ?? '');
-          });
+          // Filter based on station type
+          let filtered = matchingTracks;
+          if (stationType === 'standard' || (stationType === 'hits' && (station.decade || station.genre))) {
+            filtered = matchingTracks.filter((t) => {
+              if (station.decade) {
+                const trackDecade = getDecadeFromYear(t.year);
+                if (trackDecade !== station.decade) return false;
+              }
+              if (station.genre) {
+                const trackGenres = mapGenreToStation(t.genre);
+                if (!trackGenres.includes(station.genre)) return false;
+              }
+              return true;
+            });
+          }
 
-          // Shuffle and collect unique album art from different artists
+          // Shuffle and collect unique album art, preferring different artists
           const shuffled = shuffle(filtered);
+          const targetCount = shuffled.length >= 30 ? 9 : 4; // 3x3 for large collections, 2x2 otherwise
           const thumbSet = new Set<string>();
           const artistSet = new Set<string>();
+
+          // First pass: prefer art from different artists
           for (const t of shuffled) {
             const thumb = t.album?.thumb ?? t.thumb;
             const artistName = t.artist?.name ?? t.artistName ?? '';
-            if (thumb && !thumbSet.has(thumb)) {
-              // Prefer art from different artists for visual variety
-              if (thumbSet.size < 4 && artistSet.has(artistName) && shuffled.length > 20) continue;
+            if (thumb && !thumbSet.has(thumb) && !artistSet.has(artistName)) {
               thumbSet.add(thumb);
               artistSet.add(artistName);
             }
-            if (thumbSet.size >= 6) break;
+            if (thumbSet.size >= targetCount) break;
           }
 
-          // If we couldn't get enough unique-artist art, fill from any
-          if (thumbSet.size < 4) {
+          // Second pass: fill remaining from any unique art
+          if (thumbSet.size < targetCount) {
             for (const t of shuffled) {
               const thumb = t.album?.thumb ?? t.thumb;
               if (thumb && !thumbSet.has(thumb)) {
                 thumbSet.add(thumb);
               }
-              if (thumbSet.size >= 6) break;
+              if (thumbSet.size >= targetCount) break;
             }
           }
 
-          return { ...station, sampleArt: Array.from(thumbSet) };
+          return { ...station, sampleArt: Array.from(thumbSet), trackCount: filtered.length };
         } catch {
           return { ...station, sampleArt: [] };
         }

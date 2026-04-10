@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2 } from 'lucide-react';
+import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SettingsViewProps {
@@ -41,6 +41,20 @@ function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string;
   );
 }
 
+type PopProvider = { id: string; label: string; desc: string; requiresKey: boolean; keyName?: string };
+type LyricsProvider = { id: string; label: string; desc: string; requiresKey: boolean; keyName?: string };
+
+const POP_PROVIDERS: PopProvider[] = [
+  { id: 'deezer', label: 'Deezer', desc: 'Free, no API key needed. Uses track rank (0-1M).', requiresKey: false },
+  { id: 'lastfm', label: 'Last.fm', desc: 'Free with API key. Uses listener counts.', requiresKey: true, keyName: 'LASTFM_API_KEY' },
+  { id: 'spotify', label: 'Spotify', desc: 'Requires Premium + API credentials.', requiresKey: true, keyName: 'SPOTIFY_CLIENT_ID' },
+];
+
+const LYRICS_PROVIDERS: LyricsProvider[] = [
+  { id: 'lrclib', label: 'LRCLIB', desc: 'Free, no key. Synced + plain lyrics with timestamps.', requiresKey: false },
+  { id: 'genius', label: 'Genius', desc: 'Requires access token. Plain text lyrics only.', requiresKey: true, keyName: 'GENIUS_ACCESS_TOKEN' },
+];
+
 export default function SettingsView({
   idleTimeout, onIdleTimeoutChange,
   eqBands, onEqBandsChange,
@@ -57,6 +71,36 @@ export default function SettingsView({
   const [popularityRunning, setPopularityRunning] = useState(false);
   const [popularityProgress, setPopularityProgress] = useState('');
 
+  // Provider management state - initialized with defaults, loaded from localStorage in effect
+  const [popOrder, setPopOrder] = useState<string[]>(['deezer', 'lastfm', 'spotify']);
+  const [popDisabled, setPopDisabled] = useState<string[]>([]);
+  const [lyricsOrder, setLyricsOrder] = useState<string[]>(['lrclib', 'genius']);
+  const [lyricsDisabled, setLyricsDisabled] = useState<string[]>([]);
+  const [providerConfigLoaded, setProviderConfigLoaded] = useState(false);
+
+  // Load provider config from localStorage on mount
+  useEffect(() => {
+    try {
+      const po = localStorage.getItem('popProviderOrder');
+      if (po) { const parsed = JSON.parse(po); if (Array.isArray(parsed) && parsed.length > 0) setPopOrder(parsed); }
+      const pd = localStorage.getItem('popProviderDisabled');
+      if (pd) { const parsed = JSON.parse(pd); if (Array.isArray(parsed)) setPopDisabled(parsed); }
+      const lo = localStorage.getItem('lyricsProviderOrder');
+      if (lo) { const parsed = JSON.parse(lo); if (Array.isArray(parsed) && parsed.length > 0) setLyricsOrder(parsed); }
+      const ld = localStorage.getItem('lyricsProviderDisabled');
+      if (ld) { const parsed = JSON.parse(ld); if (Array.isArray(parsed)) setLyricsDisabled(parsed); }
+    } catch { /* ignore */ }
+    setProviderConfigLoaded(true);
+  }, []);
+  const [providerTests, setProviderTests] = useState<Record<string, any>>({});
+  const [testingProvider, setTestingProvider] = useState<string | null>(null);
+
+  // Top tracks viewer state
+  const [topTracks, setTopTracks] = useState<any[] | null>(null);
+  const [topTracksStats, setTopTracksStats] = useState<any>(null);
+  const [topTracksLoading, setTopTracksLoading] = useState(false);
+  const [showTopTracks, setShowTopTracks] = useState(false);
+
   // Station management state
   const [stations, setStations] = useState<any[]>([]);
   const [stationsLoading, setStationsLoading] = useState(true);
@@ -68,6 +112,56 @@ export default function SettingsView({
 
   const DECADES = ['1950s','1960s','1970s','1980s','1990s','2000s','2010s','2020s'];
   const GENRES = ['Rock','Pop','Dance','Hip-Hop','R&B','Country','New Wave','Soul'];
+
+  // Persist provider config after initial load
+  useEffect(() => {
+    if (!providerConfigLoaded) return;
+    localStorage.setItem('popProviderOrder', JSON.stringify(popOrder));
+    localStorage.setItem('popProviderDisabled', JSON.stringify(popDisabled));
+    localStorage.setItem('lyricsProviderOrder', JSON.stringify(lyricsOrder));
+    localStorage.setItem('lyricsProviderDisabled', JSON.stringify(lyricsDisabled));
+  }, [popOrder, popDisabled, lyricsOrder, lyricsDisabled, providerConfigLoaded]);
+
+  const moveProvider = (list: string[], setList: (v: string[]) => void, id: string, dir: 'up' | 'down') => {
+    const idx = list.indexOf(id);
+    if (idx < 0) return;
+    const newIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    const copy = [...list];
+    [copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]];
+    setList(copy);
+  };
+
+  const toggleDisabled = (list: string[], setList: (v: string[]) => void, id: string) => {
+    setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
+  };
+
+  const handleTestProvider = async (provider: string, type: 'popularity' | 'lyrics') => {
+    setTestingProvider(provider);
+    try {
+      const res = await fetch('/api/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, type }),
+      });
+      const data = await res.json();
+      setProviderTests(prev => ({ ...prev, [provider]: data }));
+    } catch (e: any) {
+      setProviderTests(prev => ({ ...prev, [provider]: { working: false, error: e?.message ?? 'Test failed' } }));
+    }
+    setTestingProvider(null);
+  };
+
+  const fetchTopTracks = async () => {
+    setTopTracksLoading(true);
+    try {
+      const res = await fetch('/api/providers/top-tracks?limit=25');
+      const data = await res.json();
+      setTopTracks(data?.topTracks ?? []);
+      setTopTracksStats(data?.stats ?? null);
+    } catch { setTopTracks([]); }
+    setTopTracksLoading(false);
+  };
 
   const fetchStations = useCallback(async () => {
     setStationsLoading(true);
@@ -165,7 +259,11 @@ export default function SettingsView({
         const res = await fetch('/api/popularity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ batchSize: 50 }),
+          body: JSON.stringify({
+            batchSize: 50,
+            providerOrder: popOrder.filter(p => !popDisabled.includes(p)),
+            disabledProviders: popDisabled,
+          }),
         });
         const data = await res.json();
         if (data?.error) {
@@ -188,19 +286,79 @@ export default function SettingsView({
     setPopularityRunning(false);
   };
 
-  const testLyrics = async () => {
-    try {
-      const res = await fetch('/api/lyrics?title=Bohemian+Rhapsody&artist=Queen');
-      const data = await res.json();
-      alert(
-        data.lyrics
-          ? `Lyrics working! Found ${data.lyrics.length} chars for Bohemian Rhapsody.\n\nDebug: ${JSON.stringify(data.debug, null, 2)}`
-          : `Lyrics not working.\n\nDebug: ${JSON.stringify(data.debug ?? data, null, 2)}`
-      );
-    } catch (e: any) {
-      alert(`Lyrics test failed: ${e?.message}`);
-    }
-  };
+  // Render a provider card for the provider management section
+  function ProviderCard({ provider, type, order, disabled, onMove, onToggle }: {
+    provider: PopProvider | LyricsProvider;
+    type: 'popularity' | 'lyrics';
+    order: string[];
+    disabled: string[];
+    onMove: (id: string, dir: 'up' | 'down') => void;
+    onToggle: (id: string) => void;
+  }) {
+    const idx = order.indexOf(provider.id);
+    const isDisabled = disabled.includes(provider.id);
+    const test = providerTests[provider.id];
+    const isTesting = testingProvider === provider.id;
+
+    return (
+      <div className={`p-3 rounded-lg border transition-colors ${isDisabled ? 'bg-secondary/20 border-border/10 opacity-60' : 'bg-secondary/40 border-border/20'}`}>
+        <div className="flex items-center gap-3">
+          {/* Priority arrows */}
+          <div className="flex flex-col gap-0.5">
+            <button onClick={() => onMove(provider.id, 'up')} disabled={idx <= 0} className="p-0.5 rounded hover:bg-background/50 disabled:opacity-20">
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onMove(provider.id, 'down')} disabled={idx >= order.length - 1} className="p-0.5 rounded hover:bg-background/50 disabled:opacity-20">
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Priority number */}
+          <span className="text-xs font-mono text-muted-foreground w-4 text-center">#{idx + 1}</span>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">{provider.label}</p>
+              {test && !isTesting && (
+                test.working
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  : <XCircle className="w-3.5 h-3.5 text-red-500" />
+              )}
+              {test?.score !== undefined && test?.score !== null && (
+                <span className="text-xs font-mono text-accent">Score: {test.score}</span>
+              )}
+              {test?.synced !== undefined && (
+                <span className="text-xs font-mono text-accent">{test.synced ? 'Synced' : 'Plain'}</span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{provider.desc}</p>
+            {test?.error && <p className="text-xs text-red-400 mt-0.5">{test.error}</p>}
+          </div>
+
+          {/* Actions */}
+          <button
+            onClick={() => handleTestProvider(provider.id, type)}
+            disabled={isTesting}
+            className="px-2.5 py-1.5 text-xs rounded-lg bg-background/50 hover:bg-background/80 border border-border/20 transition-colors flex items-center gap-1"
+          >
+            {isTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+            Test
+          </button>
+          <button
+            onClick={() => onToggle(provider.id)}
+            className={`px-2.5 py-1.5 text-xs rounded-lg transition-colors border ${
+              isDisabled
+                ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20'
+                : 'bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500/20'
+            }`}
+          >
+            {isDisabled ? 'Disabled' : 'Enabled'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-6 max-w-[900px] mx-auto">
@@ -209,11 +367,167 @@ export default function SettingsView({
           <Settings className="w-6 h-6 text-primary" />
           Settings
         </h2>
-        <p className="text-muted-foreground text-sm mt-1">Diagnostics, preferences & configuration</p>
+        <p className="text-muted-foreground text-sm mt-1">Providers, diagnostics, preferences & configuration</p>
       </div>
 
-      {/* Diagnostics */}
+      {/* Provider Management */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <Gauge className="w-5 h-5 text-accent" />
+          Popularity Providers
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Providers are tried in priority order. The first provider to return a result wins.
+          Use the arrows to reorder, toggle to enable/disable, and test to verify each provider.
+        </p>
+        <div className="space-y-2 mb-4">
+          {popOrder.map(pid => {
+            const prov = POP_PROVIDERS.find(p => p.id === pid);
+            if (!prov) return null;
+            return (
+              <ProviderCard
+                key={prov.id}
+                provider={prov}
+                type="popularity"
+                order={popOrder}
+                disabled={popDisabled}
+                onMove={(id, dir) => moveProvider(popOrder, setPopOrder, id, dir)}
+                onToggle={(id) => toggleDisabled(popDisabled, setPopDisabled, id)}
+              />
+            );
+          })}
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={handleRunPopularity}
+            disabled={popularityRunning}
+            className="px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1"
+          >
+            {popularityRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />}
+            Run Popularity Check
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm('Reset all popularity data? This lets you re-run with different providers/priority.')) return;
+              try { await fetch('/api/popularity', { method: 'DELETE' }); fetchDiagnostics(); } catch { /* ignore */ }
+            }}
+            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1 text-amber-400"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Reset Popularity Data
+          </button>
+          <button
+            onClick={() => { setShowTopTracks(!showTopTracks); if (!showTopTracks && !topTracks) fetchTopTracks(); }}
+            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1"
+          >
+            <BarChart3 className="w-3 h-3" />
+            {showTopTracks ? 'Hide' : 'View'} Top Tracks
+          </button>
+        </div>
+        {popularityProgress && (
+          <p className="text-xs text-muted-foreground mt-2">{popularityProgress}</p>
+        )}
+
+        {/* Top Tracks Viewer */}
+        {showTopTracks && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-4">
+            <div className="p-4 rounded-lg bg-background/50 border border-border/20">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-accent" />
+                  Top Tracks by Popularity
+                </h4>
+                <button onClick={fetchTopTracks} disabled={topTracksLoading} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  <RefreshCw className={`w-3 h-3 ${topTracksLoading ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </div>
+
+              {/* Distribution stats */}
+              {topTracksStats && (
+                <div className="grid grid-cols-5 gap-2 mb-3">
+                  {[
+                    { label: 'Total', value: topTracksStats.totalTracks, color: '' },
+                    { label: 'High (70+)', value: topTracksStats.distribution?.high ?? 0, color: 'text-green-400' },
+                    { label: 'Med (40-69)', value: topTracksStats.distribution?.medium ?? 0, color: 'text-yellow-400' },
+                    { label: 'Low (1-39)', value: topTracksStats.distribution?.low ?? 0, color: 'text-orange-400' },
+                    { label: 'Unchecked', value: topTracksStats.unchecked ?? 0, color: 'text-muted-foreground' },
+                  ].map(s => (
+                    <div key={s.label} className="text-center p-2 rounded-lg bg-secondary/30">
+                      <p className={`text-lg font-bold font-mono ${s.color}`}>{(s.value ?? 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {topTracksLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : !topTracks || topTracks.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">No popularity data yet. Run a popularity check first.</p>
+              ) : (
+                <div className="max-h-[300px] overflow-y-auto space-y-1">
+                  {topTracks.map((t: any, i: number) => (
+                    <div key={t.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/30 transition-colors">
+                      <span className="text-xs font-mono text-muted-foreground w-6 text-right">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{t.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{t.artistName}</p>
+                      </div>
+                      {t.genre && <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-secondary/50">{t.genre}</span>}
+                      {t.year && <span className="text-[10px] text-muted-foreground font-mono">{t.year}</span>}
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-16 h-2 rounded-full bg-secondary/60 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              (t.popularity ?? 0) >= 70 ? 'bg-green-500' : (t.popularity ?? 0) >= 40 ? 'bg-yellow-500' : 'bg-orange-500'
+                            }`}
+                            style={{ width: `${t.popularity ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-mono font-bold w-7 text-right">{t.popularity ?? 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* Lyrics Providers */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <Music2 className="w-5 h-5 text-accent" />
+          Lyrics Providers
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          LRCLIB provides synced timestamps. Genius provides plain text. Priority determines which is tried first.
+        </p>
+        <div className="space-y-2">
+          {lyricsOrder.map(pid => {
+            const prov = LYRICS_PROVIDERS.find(p => p.id === pid);
+            if (!prov) return null;
+            return (
+              <ProviderCard
+                key={prov.id}
+                provider={prov}
+                type="lyrics"
+                order={lyricsOrder}
+                disabled={lyricsDisabled}
+                onMove={(id, dir) => moveProvider(lyricsOrder, setLyricsOrder, id, dir)}
+                onToggle={(id) => toggleDisabled(lyricsDisabled, setLyricsDisabled, id)}
+              />
+            );
+          })}
+        </div>
+      </motion.div>
+
+      {/* System Diagnostics */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
         <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
           <AlertCircle className="w-5 h-5 text-accent" />
           System Diagnostics
@@ -228,22 +542,6 @@ export default function SettingsView({
             detail={diagnostics?.plex?.serverUrl ?? 'Checking...'}
           />
           <StatusBadge
-            ok={diagnostics ? diagnostics.genius?.connected : null}
-            label="Genius Lyrics"
-            detail={diagnostics?.genius?.error ?? (diagnostics?.genius?.connected ? 'Connected' : 'Checking...')}
-          />
-          <StatusBadge
-            ok={diagnostics ? (diagnostics.spotify?.working || diagnostics.spotify?.lastfmConfigured) : null}
-            label="Track Popularity"
-            detail={diagnostics?.spotify
-              ? diagnostics.spotify.disabled
-                ? `Spotify needs Premium. ${diagnostics.spotify.lastfmConfigured ? 'Using Last.fm.' : 'Add LASTFM_API_KEY for free alternative.'} ${diagnostics.spotify.tracksPopular} popular of ${diagnostics.spotify.tracksChecked} checked`
-                : diagnostics.spotify.working
-                  ? `Spotify OK. ${diagnostics.spotify.tracksPopular} popular of ${diagnostics.spotify.tracksChecked} checked${diagnostics.spotify.tracksUnchecked ? ` (${diagnostics.spotify.tracksUnchecked} unchecked)` : ''}`
-                  : `Not configured. ${diagnostics.spotify.tracksChecked} checked, ${diagnostics.spotify.tracksPopular} popular`
-              : 'Checking...'}
-          />
-          <StatusBadge
             ok={diagnostics ? (diagnostics.library?.tracks > 0) : null}
             label="Library Cache"
             detail={diagnostics?.library ? `${diagnostics.library.artists} artists, ${diagnostics.library.albums} albums, ${diagnostics.library.tracks} tracks` : 'Checking...'}
@@ -252,12 +550,6 @@ export default function SettingsView({
 
         <div className="flex gap-2 mt-3 flex-wrap">
           <button
-            onClick={testLyrics}
-            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
-          >
-            Test Lyrics (Bohemian Rhapsody)
-          </button>
-          <button
             onClick={handleResync}
             disabled={resyncing}
             className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1"
@@ -265,36 +557,12 @@ export default function SettingsView({
             {resyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
             Resync Library
           </button>
-          <button
-            onClick={handleRunPopularity}
-            disabled={popularityRunning}
-            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1"
-          >
-            {popularityRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />}
-            Run Popularity Check
-          </button>
-          <button
-            onClick={async () => {
-              if (!confirm('Reset all popularity data? This lets you re-run the check with a different API (e.g. after adding LASTFM_API_KEY).')) return;
-              try {
-                await fetch('/api/popularity', { method: 'DELETE' });
-                fetchDiagnostics();
-              } catch { /* ignore */ }
-            }}
-            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1 text-amber-400"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Reset Popularity Data
-          </button>
         </div>
-        {popularityProgress && (
-          <p className="text-xs text-muted-foreground mt-2">{popularityProgress}</p>
-        )}
       </motion.div>
 
       {/* Library Stats */}
       {diagnostics?.library && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="mb-8">
           <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
             <Database className="w-5 h-5 text-accent" />
             Library Stats
@@ -319,172 +587,85 @@ export default function SettingsView({
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-8">
         <h3 className="text-lg font-display font-semibold mb-3">Display & Behavior</h3>
         <div className="space-y-4">
-          {/* Idle timeout */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Auto-switch to Now Playing</label>
             <p className="text-xs text-muted-foreground mb-2">Automatically show Now Playing after idle</p>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="0"
-                max="120"
-                step="5"
-                value={idleTimeout}
-                onChange={(e) => onIdleTimeoutChange(parseInt(e.target.value))}
-                className="flex-1 h-2 accent-primary"
-              />
-              <span className="text-sm font-mono w-16 text-right">
-                {idleTimeout === 0 ? 'Off' : `${idleTimeout}s`}
-              </span>
+              <input type="range" min="0" max="120" step="5" value={idleTimeout} onChange={(e) => onIdleTimeoutChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{idleTimeout === 0 ? 'Off' : `${idleTimeout}s`}</span>
             </div>
           </div>
 
-          {/* Now Playing column layout */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Now Playing Layout</label>
-            <p className="text-xs text-muted-foreground mb-2">Column size distribution for the Now Playing view</p>
+            <p className="text-xs text-muted-foreground mb-2">Column size distribution</p>
             <div className="flex gap-2 mt-2">
               {[
                 { id: 'balanced', label: 'Balanced', desc: '30 / 40 / 30' },
                 { id: 'lyrics', label: 'Lyrics Focus', desc: '25 / 50 / 25' },
                 { id: 'art', label: 'Art Focus', desc: '40 / 35 / 25' },
               ].map((layout) => (
-                <button
-                  key={layout.id}
-                  onClick={() => onColumnLayoutChange(layout.id)}
-                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    columnLayout === layout.id
-                      ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
-                      : 'bg-secondary hover:bg-secondary/80'
-                  }`}
-                >
-                  {layout.label}
-                  <p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
+                <button key={layout.id} onClick={() => onColumnLayoutChange(layout.id)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${columnLayout === layout.id ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
+                  {layout.label}<p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Lyrics zoom */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Lyrics Text Size</label>
-            <p className="text-xs text-muted-foreground mb-2">Zoom level for lyrics display (smaller = more lines visible)</p>
+            <p className="text-xs text-muted-foreground mb-2">Zoom level for lyrics display</p>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="1"
-                max="5"
-                step="1"
-                value={lyricsZoom}
-                onChange={(e) => onLyricsZoomChange(parseInt(e.target.value))}
-                className="flex-1 h-2 accent-primary"
-              />
-              <span className="text-sm font-mono w-16 text-right">
-                {lyricsZoom === 1 ? 'Tiny' : lyricsZoom === 2 ? 'Small' : lyricsZoom === 3 ? 'Medium' : lyricsZoom === 4 ? 'Large' : 'Huge'}
-              </span>
+              <input type="range" min="1" max="5" step="1" value={lyricsZoom} onChange={(e) => onLyricsZoomChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{lyricsZoom === 1 ? 'Tiny' : lyricsZoom === 2 ? 'Small' : lyricsZoom === 3 ? 'Medium' : lyricsZoom === 4 ? 'Large' : 'Huge'}</span>
             </div>
           </div>
 
-          {/* Artist rows */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Artist Grid Rows</label>
-            <p className="text-xs text-muted-foreground mb-2">Number of rows visible when browsing artists horizontally</p>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="1"
-                max="6"
-                step="1"
-                value={artistRows}
-                onChange={(e) => onArtistRowsChange(parseInt(e.target.value))}
-                className="flex-1 h-2 accent-primary"
-              />
+              <input type="range" min="1" max="6" step="1" value={artistRows} onChange={(e) => onArtistRowsChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-10 text-right">{artistRows}</span>
             </div>
           </div>
 
-          {/* Previous tracks count */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Previous Tracks in Queue</label>
-            <p className="text-xs text-muted-foreground mb-2">Number of previously played tracks to show in the queue</p>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="0"
-                max="20"
-                step="1"
-                value={previousTrackCount}
-                onChange={(e) => onPreviousTrackCountChange(parseInt(e.target.value))}
-                className="flex-1 h-2 accent-primary"
-              />
+              <input type="range" min="0" max="20" step="1" value={previousTrackCount} onChange={(e) => onPreviousTrackCountChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-10 text-right">{previousTrackCount}</span>
             </div>
           </div>
 
-          {/* EQ band count */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Equalizer Bands</label>
-            <p className="text-xs text-muted-foreground mb-2">Number of LED columns in the equalizer display</p>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="8"
-                max="64"
-                step="4"
-                value={eqBands}
-                onChange={(e) => onEqBandsChange(parseInt(e.target.value))}
-                className="flex-1 h-2 accent-primary"
-              />
+              <input type="range" min="8" max="64" step="4" value={eqBands} onChange={(e) => onEqBandsChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-10 text-right">{eqBands}</span>
             </div>
           </div>
 
-          {/* EQ color scheme */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Equalizer Colors</label>
-            <p className="text-xs text-muted-foreground mb-2">Color scheme for the LED equalizer</p>
             <div className="flex gap-2 mt-2">
               {[
                 { id: 'classic', label: 'Classic', colors: 'from-green-500 via-yellow-500 to-red-500' },
                 { id: 'purple', label: 'Purple', colors: 'from-violet-600 via-purple-500 to-pink-500' },
                 { id: 'cyan', label: 'Cyan', colors: 'from-sky-500 via-cyan-500 to-pink-500' },
               ].map((scheme) => (
-                <button
-                  key={scheme.id}
-                  onClick={() => onEqColorSchemeChange(scheme.id)}
-                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    eqColorScheme === scheme.id
-                      ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
-                      : 'bg-secondary hover:bg-secondary/80'
-                  }`}
-                >
-                  <div className={`w-12 h-2 rounded-full bg-gradient-to-r ${scheme.colors} mb-1`} />
-                  {scheme.label}
+                <button key={scheme.id} onClick={() => onEqColorSchemeChange(scheme.id)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${eqColorScheme === scheme.id ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
+                  <div className={`w-12 h-2 rounded-full bg-gradient-to-r ${scheme.colors} mb-1`} />{scheme.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Keyboard size */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Touch Keyboard Size</label>
-            <p className="text-xs text-muted-foreground mb-2">Adjust key size for the on-screen keyboard</p>
             <div className="flex gap-2 mt-2">
-              {[
-                { id: 'small' as const, label: 'Small' },
-                { id: 'medium' as const, label: 'Medium' },
-                { id: 'large' as const, label: 'Large' },
-              ].map((sz) => (
-                <button
-                  key={sz.id}
-                  onClick={() => onKeyboardSizeChange(sz.id)}
-                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    keyboardSize === sz.id
-                      ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
-                      : 'bg-secondary hover:bg-secondary/80'
-                  }`}
-                >
-                  {sz.label}
+              {(['small', 'medium', 'large'] as const).map((sz) => (
+                <button key={sz} onClick={() => onKeyboardSizeChange(sz)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${keyboardSize === sz ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
+                  {sz.charAt(0).toUpperCase() + sz.slice(1)}
                 </button>
               ))}
             </div>
@@ -499,29 +680,16 @@ export default function SettingsView({
           Station Management
         </h3>
 
-        {/* Add new station */}
         <div className="p-4 rounded-lg bg-secondary/40 border border-border/20 mb-3">
           <label className="text-sm font-medium">Add Station</label>
-          <p className="text-xs text-muted-foreground mb-3">Create standard, hits, or most-played stations</p>
-
-          {/* Station type selector */}
-          <div className="flex gap-2 mb-3">
+          <div className="flex gap-2 mb-3 mt-2">
             {[
               { id: 'standard' as const, label: 'Standard', desc: 'Decade + Genre' },
               { id: 'hits' as const, label: 'Hits', desc: 'Top tracks across eras' },
               { id: 'most-played' as const, label: 'Most Played', desc: 'Your favorites' },
             ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setNewStationType(t.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  newStationType === t.id
-                    ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
-                    : 'bg-secondary hover:bg-secondary/80'
-                }`}
-              >
-                {t.label}
-                <p className="text-[10px] opacity-70 mt-0.5">{t.desc}</p>
+              <button key={t.id} onClick={() => setNewStationType(t.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${newStationType === t.id ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
+                {t.label}<p className="text-[10px] opacity-70 mt-0.5">{t.desc}</p>
               </button>
             ))}
           </div>
@@ -531,22 +699,14 @@ export default function SettingsView({
               <>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Decade</label>
-                  <select
-                    value={newStationDecade}
-                    onChange={(e) => setNewStationDecade(e.target.value)}
-                    className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
-                  >
+                  <select value={newStationDecade} onChange={(e) => setNewStationDecade(e.target.value)} className="px-3 py-2 rounded-lg bg-background border border-border text-sm">
                     {newStationType === 'hits' && <option value="all">All Decades</option>}
                     {DECADES.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Genre</label>
-                  <select
-                    value={newStationGenre}
-                    onChange={(e) => setNewStationGenre(e.target.value)}
-                    className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
-                  >
+                  <select value={newStationGenre} onChange={(e) => setNewStationGenre(e.target.value)} className="px-3 py-2 rounded-lg bg-background border border-border text-sm">
                     {newStationType === 'hits' && <option value="all">All Genres</option>}
                     {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
@@ -555,31 +715,17 @@ export default function SettingsView({
             )}
             <div className="flex-1 min-w-[150px]">
               <label className="text-xs text-muted-foreground block mb-1">Custom Name (optional)</label>
-              <input
-                type="text"
-                value={newStationName}
-                onChange={(e) => setNewStationName(e.target.value)}
-                placeholder={
-                  newStationType === 'most-played' ? 'Most Played'
-                    : newStationType === 'hits'
-                      ? `${newStationGenre !== 'all' ? newStationGenre + ' ' : ''}Hits`
-                      : `${newStationDecade} ${newStationGenre}`
-                }
+              <input type="text" value={newStationName} onChange={(e) => setNewStationName(e.target.value)}
+                placeholder={newStationType === 'most-played' ? 'Most Played' : newStationType === 'hits' ? `${newStationGenre !== 'all' ? newStationGenre + ' ' : ''}Hits` : `${newStationDecade} ${newStationGenre}`}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
               />
             </div>
-            <button
-              onClick={handleAddStation}
-              disabled={stationSaving}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm flex items-center gap-1"
-            >
-              {stationSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Add
+            <button onClick={handleAddStation} disabled={stationSaving} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm flex items-center gap-1">
+              {stationSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add
             </button>
           </div>
         </div>
 
-        {/* Active stations list */}
         <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
           <div className="flex items-center justify-between mb-3">
             <label className="text-sm font-medium">Active Stations ({stations.length})</label>
@@ -588,9 +734,7 @@ export default function SettingsView({
             </button>
           </div>
           {stationsLoading ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
+            <div className="flex items-center justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
           ) : stations.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No active stations. Add one above.</p>
           ) : (
@@ -599,13 +743,11 @@ export default function SettingsView({
                 <div key={s.id} className="flex items-center gap-3 p-2 rounded-lg bg-background/50 border border-border/10 group">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{s.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{s.decade} &middot; {s.genre}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {s.stationType === 'hits' ? 'Hits' : s.stationType === 'most-played' ? 'Most Played' : `${s.decade ?? ''} ${s.genre ?? ''}`.trim()}
+                    </p>
                   </div>
-                  <button
-                    onClick={() => handleRemoveStation(s.id)}
-                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                    title="Remove station"
-                  >
+                  <button onClick={() => handleRemoveStation(s.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100" title="Remove station">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -620,10 +762,7 @@ export default function SettingsView({
         <h3 className="text-lg font-display font-semibold mb-3">Plex Configuration</h3>
         <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
           <p className="text-sm text-muted-foreground mb-3">Reconfigure your Plex server connection or re-sync your library.</p>
-          <button
-            onClick={() => { window.location.href = '/setup'; }}
-            className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
+          <button onClick={() => { window.location.href = '/setup'; }} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             Open Setup Wizard
           </button>
         </div>

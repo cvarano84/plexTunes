@@ -1,6 +1,7 @@
-// Spotify + Last.fm API utility for track popularity
-// Spotify requires the app owner to have Premium for search endpoints.
-// Falls back to Last.fm (free, no premium required) if Spotify fails.
+// Multi-provider popularity API: Spotify, Last.fm, Deezer
+// Priority order is configurable. Each provider normalizes to 0-100.
+
+export type PopularityProvider = 'spotify' | 'lastfm' | 'deezer';
 
 let cachedSpotifyToken: string | null = null;
 let spotifyTokenExpiry: number = 0;
@@ -48,13 +49,15 @@ async function getSpotifyToken(): Promise<string | null> {
   }
 }
 
-// Try Spotify search - returns popularity 0-100 or null
-async function spotifySearch(artistName: string, trackTitle: string, token: string): Promise<number | null> {
+// Spotify: returns popularity 0-100 or null
+export async function spotifySearch(artistName: string, trackTitle: string, token?: string): Promise<number | null> {
   try {
+    const t = token ?? await getSpotifyToken();
+    if (!t) return null;
     const query = encodeURIComponent(`track:${trackTitle} artist:${artistName}`);
     const res = await fetch(
       `https://api.spotify.com/v1/search?q=${query}&type=track&limit=1`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
+      { headers: { 'Authorization': `Bearer ${t}` } }
     );
 
     if (res.status === 403) {
@@ -78,9 +81,8 @@ async function spotifySearch(artistName: string, trackTitle: string, token: stri
   }
 }
 
-// Last.fm fallback - returns a popularity score 0-100 derived from listener count
-// Last.fm API is free and doesn't require premium
-async function lastfmSearch(artistName: string, trackTitle: string): Promise<number | null> {
+// Last.fm: returns popularity 0-100 derived from listener count
+export async function lastfmSearch(artistName: string, trackTitle: string): Promise<number | null> {
   const apiKey = process.env.LASTFM_API_KEY ?? '';
   if (!apiKey) return null;
 
@@ -101,8 +103,7 @@ async function lastfmSearch(artistName: string, trackTitle: string): Promise<num
 
     if (listeners === 0 && playcount === 0) return null;
 
-    // Normalize to 0-100 scale using logarithmic scaling
-    // Top tracks have ~50M+ listeners, obscure ones have <1000
+    // Normalize to 0-100 using log scale. Top tracks ~50M+ listeners.
     const score = Math.min(100, Math.round(Math.log10(Math.max(1, listeners)) * 15));
     return Math.max(1, score);
   } catch {
@@ -110,54 +111,93 @@ async function lastfmSearch(artistName: string, trackTitle: string): Promise<num
   }
 }
 
-// Simple heuristic fallback when no API works
-// Uses track title commonality and decade to estimate popularity
-function heuristicPopularity(artistName: string, trackTitle: string): number {
-  // Default moderate score so tracks aren't all 0
+// Deezer: free, no auth needed. rank field 0-1,000,000 normalized to 0-100
+export async function deezerSearch(artistName: string, trackTitle: string): Promise<number | null> {
+  try {
+    const query = encodeURIComponent(`artist:"${artistName}" track:"${trackTitle}"`);
+    const res = await fetch(`https://api.deezer.com/search/track?q=${query}&limit=1`, {
+      headers: { 'User-Agent': 'PlexJukebox/1.0' },
+    });
+    if (!res?.ok) return null;
+
+    const data = await res?.json?.();
+    const items = data?.data ?? [];
+    if (items.length > 0) {
+      const rank = items[0]?.rank ?? 0;
+      // Deezer rank: 0-1,000,000. Normalize to 0-100.
+      // Rank 900k+ = top hits (~90-100), 500k = moderate (~50), <100k = obscure (<10)
+      if (rank <= 0) return null;
+      const score = Math.min(100, Math.round((rank / 1000000) * 100));
+      return Math.max(1, score);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Simple heuristic fallback
+function heuristicPopularity(): number {
   return 30;
 }
 
-export async function getTrackPopularity(artistName: string, trackTitle: string): Promise<number | null> {
-  // Try Spotify first
-  const token = await getSpotifyToken();
-  if (token) {
-    const pop = await spotifySearch(artistName, trackTitle, token);
+// Default provider order
+const DEFAULT_PROVIDER_ORDER: PopularityProvider[] = ['deezer', 'lastfm', 'spotify'];
+
+export async function getTrackPopularity(
+  artistName: string,
+  trackTitle: string,
+  providerOrder?: PopularityProvider[],
+  disabledProviders?: PopularityProvider[]
+): Promise<number | null> {
+  const order = providerOrder ?? DEFAULT_PROVIDER_ORDER;
+  const disabled = new Set(disabledProviders ?? []);
+
+  for (const provider of order) {
+    if (disabled.has(provider)) continue;
+    let pop: number | null = null;
+    if (provider === 'spotify') {
+      const token = await getSpotifyToken();
+      if (token) pop = await spotifySearch(artistName, trackTitle, token);
+    } else if (provider === 'lastfm') {
+      pop = await lastfmSearch(artistName, trackTitle);
+    } else if (provider === 'deezer') {
+      pop = await deezerSearch(artistName, trackTitle);
+    }
     if (pop !== null) return pop;
   }
 
-  // Try Last.fm
-  const lastfmPop = await lastfmSearch(artistName, trackTitle);
-  if (lastfmPop !== null) return lastfmPop;
-
-  // Return heuristic default
-  return heuristicPopularity(artistName, trackTitle);
+  return heuristicPopularity();
 }
 
 export async function getBatchPopularity(
-  tracks: Array<{ artistName: string; title: string }>
+  tracks: Array<{ artistName: string; title: string }>,
+  providerOrder?: PopularityProvider[],
+  disabledProviders?: PopularityProvider[]
 ): Promise<Map<string, number>> {
   const results = new Map<string, number>();
+  const order = providerOrder ?? DEFAULT_PROVIDER_ORDER;
+  const disabled = new Set(disabledProviders ?? []);
 
-  // Determine which service to use
+  // Check which providers are available
   const token = await getSpotifyToken();
   const lastfmKey = process.env.LASTFM_API_KEY ?? '';
-  const useSpotify = !!token && !spotifyDisabled;
-  const useLastfm = !!lastfmKey;
+  const useSpotify = !!token && !spotifyDisabled && !disabled.has('spotify');
+  const useLastfm = !!lastfmKey && !disabled.has('lastfm');
+  const useDeezer = !disabled.has('deezer');
 
-  console.log(`[Popularity] Processing ${tracks?.length ?? 0} tracks. Spotify: ${useSpotify ? 'enabled' : 'disabled'}, Last.fm: ${useLastfm ? 'enabled' : 'disabled'}`);
+  console.log(`[Popularity] Processing ${tracks?.length ?? 0} tracks. Order: ${order.filter(p => !disabled.has(p)).join(' > ')}. Spotify: ${useSpotify ? 'on' : 'off'}, Last.fm: ${useLastfm ? 'on' : 'off'}, Deezer: ${useDeezer ? 'on' : 'off'}`);
 
-  if (!useSpotify && !useLastfm) {
-    // No API available - assign heuristic scores
+  if (!useSpotify && !useLastfm && !useDeezer) {
     console.log('[Popularity] No popularity API available. Using heuristic scores.');
     for (const t of (tracks ?? [])) {
       const key = `${t?.artistName ?? ''}::${t?.title ?? ''}`;
-      results.set(key, heuristicPopularity(t?.artistName ?? '', t?.title ?? ''));
+      results.set(key, heuristicPopularity());
     }
     return results;
   }
 
-  // Process in batches
-  const batchSize = useSpotify ? 5 : 3; // Last.fm is slower, smaller batches
+  const batchSize = useDeezer ? 3 : useSpotify ? 5 : 3;
   let found = 0;
   let notFound = 0;
 
@@ -167,29 +207,31 @@ export async function getBatchPopularity(
       const key = `${t?.artistName ?? ''}::${t?.title ?? ''}`;
       let pop: number | null = null;
 
-      if (useSpotify && !spotifyDisabled) {
-        pop = await spotifySearch(t?.artistName ?? '', t?.title ?? '', token!);
-      }
-
-      if (pop === null && useLastfm) {
-        pop = await lastfmSearch(t?.artistName ?? '', t?.title ?? '');
+      for (const provider of order) {
+        if (pop !== null) break;
+        if (disabled.has(provider)) continue;
+        if (provider === 'spotify' && useSpotify) {
+          pop = await spotifySearch(t?.artistName ?? '', t?.title ?? '', token!);
+        } else if (provider === 'lastfm' && useLastfm) {
+          pop = await lastfmSearch(t?.artistName ?? '', t?.title ?? '');
+        } else if (provider === 'deezer' && useDeezer) {
+          pop = await deezerSearch(t?.artistName ?? '', t?.title ?? '');
+        }
       }
 
       if (pop === null) {
-        pop = heuristicPopularity(t?.artistName ?? '', t?.title ?? '');
+        pop = heuristicPopularity();
         notFound++;
       } else {
         found++;
       }
-
       results.set(key, pop);
     }) ?? [];
 
     await Promise.all(promises);
 
-    // Rate limit delay
     if (i + batchSize < (tracks?.length ?? 0)) {
-      await new Promise(r => setTimeout(r, useSpotify ? 200 : 350));
+      await new Promise(r => setTimeout(r, 300));
     }
   }
 
@@ -197,28 +239,38 @@ export async function getBatchPopularity(
   return results;
 }
 
-// Check if Spotify is working (for diagnostics)
+// Test a specific provider with a known track
+export async function testProvider(provider: PopularityProvider): Promise<{
+  working: boolean;
+  score: number | null;
+  error?: string;
+  configured: boolean;
+}> {
+  if (provider === 'spotify') {
+    const clientId = process.env.SPOTIFY_CLIENT_ID ?? '';
+    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET ?? '';
+    if (!clientId || !clientSecret) return { working: false, score: null, error: 'No Spotify credentials configured', configured: false };
+    if (spotifyDisabled) return { working: false, score: null, error: 'Spotify disabled (requires Premium)', configured: true };
+    const token = await getSpotifyToken();
+    if (!token) return { working: false, score: null, error: 'Failed to get token', configured: true };
+    const pop = await spotifySearch('Queen', 'Bohemian Rhapsody', token);
+    return { working: pop !== null, score: pop, error: pop === null ? (spotifyDisabled ? 'Requires Premium' : 'Search failed') : undefined, configured: true };
+  }
+  if (provider === 'lastfm') {
+    const apiKey = process.env.LASTFM_API_KEY ?? '';
+    if (!apiKey) return { working: false, score: null, error: 'No LASTFM_API_KEY configured', configured: false };
+    const pop = await lastfmSearch('Queen', 'Bohemian Rhapsody');
+    return { working: pop !== null, score: pop, error: pop === null ? 'Search returned no results' : undefined, configured: true };
+  }
+  if (provider === 'deezer') {
+    const pop = await deezerSearch('Queen', 'Bohemian Rhapsody');
+    return { working: pop !== null, score: pop, error: pop === null ? 'Search returned no results' : undefined, configured: true };
+  }
+  return { working: false, score: null, error: 'Unknown provider', configured: false };
+}
+
+// Check if Spotify is working (for diagnostics - backwards compat)
 export async function checkSpotifyStatus(): Promise<{ working: boolean; error?: string; disabled?: boolean }> {
-  if (spotifyDisabled) {
-    return { working: false, error: 'Spotify API disabled (requires Premium subscription)', disabled: true };
-  }
-
-  const clientId = process.env.SPOTIFY_CLIENT_ID ?? '';
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET ?? '';
-  if (!clientId || !clientSecret) {
-    return { working: false, error: 'Spotify credentials not configured' };
-  }
-
-  const token = await getSpotifyToken();
-  if (!token) {
-    return { working: false, error: 'Failed to get Spotify token' };
-  }
-
-  // Test a search
-  const pop = await spotifySearch('Queen', 'Bohemian Rhapsody', token);
-  if (pop !== null) {
-    return { working: true };
-  }
-
-  return { working: false, error: spotifyDisabled ? 'Spotify requires Premium subscription' : 'Search returned no results' };
+  const result = await testProvider('spotify');
+  return { working: result.working, error: result.error, disabled: spotifyDisabled };
 }
