@@ -10,6 +10,7 @@ import PlexImage from './plex-image';
 
 interface StationsViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
+  stationRows?: number;
 }
 
 const DECADE_COLORS: Record<string, string> = {
@@ -103,7 +104,7 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
   );
 }
 
-export default function StationsView({ onNavigate }: StationsViewProps) {
+export default function StationsView({ onNavigate, stationRows = 1 }: StationsViewProps) {
   const [stations, setStations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
@@ -124,22 +125,23 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
       .catch(() => setLoading(false));
   }, []);
 
-  // Calculate card size based on available vertical space
+  // Calculate card size based on available vertical space and row count
   useEffect(() => {
     const calcSize = () => {
       const container = containerRef.current;
       if (!container) return;
-      // Available height is the container's client height
       const available = container.clientHeight;
-      // Cards should be ~75% of the available height
-      const size = Math.max(200, Math.round(available * 0.85));
-      setCardSize(size);
+      const gap = 12;
+      const totalGaps = (stationRows - 1) * gap;
+      // Cards should fill ~70% of the available height per row
+      const perRow = Math.max(120, Math.round((available - totalGaps) * 0.70 / stationRows));
+      setCardSize(perRow);
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [stations]);
+  }, [stations, stationRows]);
 
   const checkScroll = () => {
     const el = scrollRef.current;
@@ -249,22 +251,33 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
         </div>
       </div>
 
-      {/* Stations row - centered vertically in remaining space */}
+      {/* Stations grid - centered vertically in remaining space */}
       <div className="flex-1 flex items-center min-h-0">
         <div
           ref={scrollRef}
-          className="flex gap-4 overflow-x-auto scrollbar-none scroll-smooth w-full items-center"
+          className="flex gap-3 overflow-x-auto scrollbar-none scroll-smooth w-full items-center"
           style={{ scrollSnapType: 'x mandatory' }}
         >
-          {stations.map((station: any) => (
-            <StationCard
-              key={station?.id}
-              station={station}
-              onPlay={() => handlePlayStation(station)}
-              isPlaying={playingStation === station?.id}
-              cardSize={cardSize}
-            />
-          ))}
+          {(() => {
+            // Chunk stations into columns of `stationRows` items
+            const cols: any[][] = [];
+            for (let i = 0; i < stations.length; i += stationRows) {
+              cols.push(stations.slice(i, i + stationRows));
+            }
+            return cols.map((col, ci) => (
+              <div key={ci} className="flex flex-col gap-3 flex-shrink-0">
+                {col.map((station: any) => (
+                  <StationCard
+                    key={station?.id}
+                    station={station}
+                    onPlay={() => handlePlayStation(station)}
+                    isPlaying={playingStation === station?.id}
+                    cardSize={cardSize}
+                  />
+                ))}
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </div>

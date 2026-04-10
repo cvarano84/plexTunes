@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Play, Plus, Loader2, Disc, Music2, Star } from 'lucide-react';
+import { ArrowLeft, Play, Plus, Loader2, Disc, Music2, Star, ListPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -26,7 +26,7 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
   const [artist, setArtist] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAllTracks, setShowAllTracks] = useState(false);
-  const { playTrack, playQueue, addToQueue } = usePlayer();
+  const { playQueue, addToQueue, playNext } = usePlayer();
 
   useEffect(() => {
     if (!artistId) return;
@@ -174,18 +174,20 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
               <span className="text-xs text-muted-foreground w-12 text-right">
                 {formatDuration(track?.duration)}
               </span>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   onClick={() => { addToQueue(makeTrackInfo(track)); toast.success('Added to queue'); }}
-                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground text-xs font-medium hover:bg-secondary/80 active:bg-primary active:text-primary-foreground transition-colors"
                 >
-                  <Plus className="w-4 h-4" />
+                  <ListPlus className="w-4 h-4" />
+                  Queue
                 </button>
                 <button
-                  onClick={() => playTrack(makeTrackInfo(track))}
-                  className="w-8 h-8 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90"
+                  onClick={() => { playNext(makeTrackInfo(track)); toast.success('Playing next'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 active:bg-accent transition-colors"
                 >
-                  <Play className="w-4 h-4 text-primary-foreground ml-0.5" />
+                  <Play className="w-4 h-4 ml-0.5" />
+                  Next
                 </button>
               </div>
             </motion.div>

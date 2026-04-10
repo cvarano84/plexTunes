@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Search, Loader2 } from 'lucide-react';
+import { Users, Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { ViewType } from './jukebox-shell';
 import PlexImage from './plex-image';
@@ -24,6 +24,34 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [itemSize, setItemSize] = useState(140);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 10);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [artists]);
+
+  const scrollNav = (dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === 'left' ? -(itemSize + 12) * 3 : (itemSize + 12) * 3, behavior: 'smooth' });
+  };
 
   // Calculate item size based on available height and rows
   useEffect(() => {
@@ -124,6 +152,22 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
           </h2>
           <p className="text-muted-foreground text-[clamp(0.75rem,1.2vw,1rem)] mt-1">{total} artists in your library</p>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => scrollNav('left')}
+            disabled={!canScrollLeft}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => scrollNav('right')}
+            disabled={!canScrollRight}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -150,7 +194,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
           }}
           className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0"
         >
-          <div className="flex gap-3 h-full items-start">
+          <div className="flex gap-3 h-full items-center">
             {columns.map((col, ci) => (
               <div key={ci} className="flex flex-col gap-3 flex-shrink-0" style={{ width: itemSize }}>
                 {col.map((artist: any, i: number) => (

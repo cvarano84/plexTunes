@@ -8,7 +8,7 @@ interface TouchKeyboardProps {
   visible: boolean;
   onClose: () => void;
   targetRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
-  size?: 'small' | 'medium' | 'large';
+  size?: 'small' | 'medium' | 'large' | 'xl' | 'xxl';
 }
 
 const ROWS_LOWER = [
@@ -29,6 +29,8 @@ const SIZE_CONFIG = {
   small: { keyH: 'h-9', keyText: 'text-xs', keyMinW: 'min-w-[28px]', maxW: 'max-w-[700px]' },
   medium: { keyH: 'h-11', keyText: 'text-sm', keyMinW: 'min-w-[34px]', maxW: 'max-w-[800px]' },
   large: { keyH: 'h-14', keyText: 'text-base', keyMinW: 'min-w-[40px]', maxW: 'max-w-[900px]' },
+  xl: { keyH: 'h-16', keyText: 'text-lg', keyMinW: 'min-w-[48px]', maxW: 'max-w-[1100px]' },
+  xxl: { keyH: 'h-20', keyText: 'text-xl', keyMinW: 'min-w-[56px]', maxW: 'max-w-[1300px]' },
 };
 
 export default function TouchKeyboard({ visible, onClose, targetRef, size = 'medium' }: TouchKeyboardProps) {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album, Calendar } from 'lucide-react';
+import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album, Volume2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
@@ -308,7 +308,8 @@ interface NowPlayingViewProps {
 export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic', previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3 }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
-    togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode
+    togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode,
+    volume, setVolume
   } = usePlayer();
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
@@ -382,9 +383,8 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
         <div className="flex-shrink-0 flex flex-col items-center justify-center px-4 gap-2 overflow-hidden" style={{ flex: `${colFlex[0]} 0 0%` }}>
           {/* Release year - large and prominent above art */}
           {currentTrack?.year ? (
-            <div className="flex items-center gap-2">
-              <Calendar className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)] text-primary/70" />
-              <span className="text-[clamp(1.5rem,3vw,3rem)] font-display font-bold text-primary/80 tracking-wider">
+            <div className="self-start pl-2">
+              <span className="text-[clamp(1.5rem,3vw,3rem)] font-display font-bold text-white tracking-wider">
                 {currentTrack.year}
               </span>
             </div>
@@ -561,19 +561,44 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
           <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} />
         </div>
         <div className="px-4 py-2 border-t border-border/10">
-          <div
-            className="h-1.5 bg-muted/50 rounded-full cursor-pointer group mb-2"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const pct = x / rect.width;
-              seek(pct * duration);
-            }}
-          >
+          <div className="flex items-center gap-4 mb-2">
+            {/* Volume slider */}
+            <div className="flex items-center gap-2 flex-shrink-0" style={{ width: 'clamp(120px, 14vw, 220px)' }}>
+              <Volume2 className="w-[clamp(1rem,1.4vw,1.25rem)] h-[clamp(1rem,1.4vw,1.25rem)] text-muted-foreground flex-shrink-0" />
+              <div
+                className="flex-1 h-2 bg-muted/50 rounded-full cursor-pointer group relative"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const pct = Math.max(0, Math.min(1, x / rect.width));
+                  setVolume(pct);
+                }}
+              >
+                <div
+                  className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full transition-all"
+                  style={{ width: `${(volume ?? 1) * 100}%` }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary shadow-lg border-2 border-background"
+                  style={{ left: `calc(${(volume ?? 1) * 100}% - 8px)` }}
+                />
+              </div>
+            </div>
+            {/* Progress bar */}
             <div
-              className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all group-hover:h-2"
-              style={{ width: `${progress}%` }}
-            />
+              className="flex-1 h-1.5 bg-muted/50 rounded-full cursor-pointer group"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const pct = x / rect.width;
+                seek(pct * duration);
+              }}
+            >
+              <div
+                className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all group-hover:h-2"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-center gap-4">
             <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground font-mono w-12 text-right">{formatTime(currentTime)}</span>

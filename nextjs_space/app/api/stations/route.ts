@@ -21,89 +21,69 @@ export async function GET() {
       orderBy: [{ decade: 'asc' }, { genre: 'asc' }],
     });
 
-    // For each station, get sample album art with randomization
-    const stationsWithArt = await Promise.all(
-      (stations ?? []).map(async (station) => {
-        try {
-          const stationType = station.stationType ?? 'standard';
+    // Pre-fetch a pool of distinct album art thumbs in ONE query for all standard/hits stations
+    // This avoids N+1 queries (one per station) each fetching 2000 tracks
+    const allTracksWithArt = await prisma.cachedTrack.findMany({
+      where: { thumb: { not: null } },
+      select: { thumb: true, artistName: true, year: true, genre: true, popularity: true, playCount: true,
+        album: { select: { thumb: true } } },
+      take: 5000,
+    });
 
-          // Build query based on station type
-          let where: any = { thumb: { not: null } };
+    const stationsWithArt = (stations ?? []).map((station) => {
+      try {
+        const stationType = station.stationType ?? 'standard';
 
-          if (stationType === 'most-played') {
-            where.playCount = { gt: 0 };
-          } else if (stationType === 'hits') {
-            if (station.minPopularity > 0) where.popularity = { gte: station.minPopularity };
-            if (station.genre) {
-              // Will filter client-side by genre mapping
-            }
-            if (station.decade) {
-              where.year = { not: null };
-            }
-          } else {
-            where.year = { not: null };
-          }
-
-          const matchingTracks = await prisma.cachedTrack.findMany({
-            where,
-            include: {
-              album: { select: { thumb: true } },
-              artist: { select: { name: true } },
-            },
-            take: 2000,
-            ...(stationType === 'most-played' ? { orderBy: { playCount: 'desc' } } : {}),
+        // Filter tracks for this station from the pre-fetched pool
+        let filtered = allTracksWithArt;
+        if (stationType === 'most-played') {
+          filtered = allTracksWithArt.filter(t => (t.playCount ?? 0) > 0);
+        } else if (stationType === 'hits') {
+          filtered = allTracksWithArt.filter(t => {
+            if (station.minPopularity > 0 && (t.popularity ?? 0) < station.minPopularity) return false;
+            if (station.decade && getDecadeFromYear(t.year) !== station.decade) return false;
+            if (station.genre && !mapGenreToStation(t.genre).includes(station.genre)) return false;
+            return true;
           });
+        } else {
+          filtered = allTracksWithArt.filter(t => {
+            if (station.decade && getDecadeFromYear(t.year) !== station.decade) return false;
+            if (station.genre && !mapGenreToStation(t.genre).includes(station.genre)) return false;
+            return true;
+          });
+        }
 
-          // Filter based on station type
-          let filtered = matchingTracks;
-          if (stationType === 'standard' || (stationType === 'hits' && (station.decade || station.genre))) {
-            filtered = matchingTracks.filter((t) => {
-              if (station.decade) {
-                const trackDecade = getDecadeFromYear(t.year);
-                if (trackDecade !== station.decade) return false;
-              }
-              if (station.genre) {
-                const trackGenres = mapGenreToStation(t.genre);
-                if (!trackGenres.includes(station.genre)) return false;
-              }
-              return true;
-            });
+        // Shuffle and collect unique album art, preferring different artists
+        const shuffled = shuffle(filtered);
+        const targetCount = shuffled.length >= 30 ? 9 : 4;
+        const thumbSet = new Set<string>();
+        const artistSet = new Set<string>();
+
+        for (const t of shuffled) {
+          const thumb = t.album?.thumb ?? t.thumb;
+          const artistName = t.artistName ?? '';
+          if (thumb && !thumbSet.has(thumb) && !artistSet.has(artistName)) {
+            thumbSet.add(thumb);
+            artistSet.add(artistName);
           }
+          if (thumbSet.size >= targetCount) break;
+        }
 
-          // Shuffle and collect unique album art, preferring different artists
-          const shuffled = shuffle(filtered);
-          const targetCount = shuffled.length >= 30 ? 9 : 4; // 3x3 for large collections, 2x2 otherwise
-          const thumbSet = new Set<string>();
-          const artistSet = new Set<string>();
-
-          // First pass: prefer art from different artists
+        if (thumbSet.size < targetCount) {
           for (const t of shuffled) {
             const thumb = t.album?.thumb ?? t.thumb;
-            const artistName = t.artist?.name ?? t.artistName ?? '';
-            if (thumb && !thumbSet.has(thumb) && !artistSet.has(artistName)) {
+            if (thumb && !thumbSet.has(thumb)) {
               thumbSet.add(thumb);
-              artistSet.add(artistName);
             }
             if (thumbSet.size >= targetCount) break;
           }
-
-          // Second pass: fill remaining from any unique art
-          if (thumbSet.size < targetCount) {
-            for (const t of shuffled) {
-              const thumb = t.album?.thumb ?? t.thumb;
-              if (thumb && !thumbSet.has(thumb)) {
-                thumbSet.add(thumb);
-              }
-              if (thumbSet.size >= targetCount) break;
-            }
-          }
-
-          return { ...station, sampleArt: Array.from(thumbSet), trackCount: filtered.length };
-        } catch {
-          return { ...station, sampleArt: [] };
         }
-      })
-    );
+
+        return { ...station, sampleArt: Array.from(thumbSet), trackCount: filtered.length };
+      } catch {
+        return { ...station, sampleArt: [] };
+      }
+    });
 
     return NextResponse.json({ stations: stationsWithArt });
   } catch (e: any) {

@@ -13,12 +13,14 @@ interface SettingsViewProps {
   onEqColorSchemeChange: (val: string) => void;
   previousTrackCount: number;
   onPreviousTrackCountChange: (val: number) => void;
-  keyboardSize: 'small' | 'medium' | 'large';
-  onKeyboardSizeChange: (val: 'small' | 'medium' | 'large') => void;
+  keyboardSize: 'small' | 'medium' | 'large' | 'xl' | 'xxl';
+  onKeyboardSizeChange: (val: 'small' | 'medium' | 'large' | 'xl' | 'xxl') => void;
   columnLayout: string;
   onColumnLayoutChange: (val: string) => void;
   artistRows: number;
   onArtistRowsChange: (val: number) => void;
+  stationRows: number;
+  onStationRowsChange: (val: number) => void;
   lyricsZoom: number;
   onLyricsZoomChange: (val: number) => void;
 }
@@ -63,6 +65,7 @@ export default function SettingsView({
   keyboardSize, onKeyboardSizeChange,
   columnLayout, onColumnLayoutChange,
   artistRows, onArtistRowsChange,
+  stationRows, onStationRowsChange,
   lyricsZoom, onLyricsZoomChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
@@ -630,6 +633,14 @@ export default function SettingsView({
           </div>
 
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Station Grid Rows</label>
+            <div className="flex items-center gap-3">
+              <input type="range" min="1" max="4" step="1" value={stationRows} onChange={(e) => onStationRowsChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-10 text-right">{stationRows}</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Previous Tracks in Queue</label>
             <div className="flex items-center gap-3">
               <input type="range" min="0" max="20" step="1" value={previousTrackCount} onChange={(e) => onPreviousTrackCountChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
@@ -663,7 +674,7 @@ export default function SettingsView({
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Touch Keyboard Size</label>
             <div className="flex gap-2 mt-2">
-              {(['small', 'medium', 'large'] as const).map((sz) => (
+              {(['small', 'medium', 'large', 'xl', 'xxl'] as const).map((sz) => (
                 <button key={sz} onClick={() => onKeyboardSizeChange(sz)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${keyboardSize === sz ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
                   {sz.charAt(0).toUpperCase() + sz.slice(1)}
                 </button>

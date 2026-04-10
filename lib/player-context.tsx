@@ -29,6 +29,7 @@ interface PlayerContextType extends PlayerState {
   playTrack: (track: TrackInfo) => void;
   playQueue: (tracks: TrackInfo[], startIndex?: number) => void;
   addToQueue: (track: TrackInfo) => void;
+  playNext: (track: TrackInfo) => void;
   nextTrack: () => void;
   prevTrack: () => void;
   togglePlay: () => void;
@@ -137,6 +138,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const addToQueue = useCallback((track: TrackInfo) => {
     setQueue(prev => [...(prev ?? []), track]);
   }, []);
+
+  const playNext = useCallback((track: TrackInfo) => {
+    setQueue(prev => {
+      const copy = [...(prev ?? [])];
+      copy.splice(queueIndex + 1, 0, track);
+      return copy;
+    });
+  }, [queueIndex]);
 
   const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
     if (fetchingMoreRef.current) return [];
@@ -301,6 +310,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         playTrack,
         playQueue,
         addToQueue,
+        playNext,
         nextTrack,
         prevTrack,
         togglePlay,
