@@ -19,6 +19,8 @@ interface SettingsViewProps {
   onColumnLayoutChange: (val: string) => void;
   artistRows: number;
   onArtistRowsChange: (val: number) => void;
+  lyricsZoom: number;
+  onLyricsZoomChange: (val: number) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -47,6 +49,7 @@ export default function SettingsView({
   keyboardSize, onKeyboardSizeChange,
   columnLayout, onColumnLayoutChange,
   artistRows, onArtistRowsChange,
+  lyricsZoom, onLyricsZoomChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -212,10 +215,14 @@ export default function SettingsView({
             detail={diagnostics?.genius?.error ?? (diagnostics?.genius?.connected ? 'Connected' : 'Checking...')}
           />
           <StatusBadge
-            ok={diagnostics ? diagnostics.spotify?.working : null}
-            label="Spotify Popularity"
+            ok={diagnostics ? (diagnostics.spotify?.working || diagnostics.spotify?.lastfmConfigured) : null}
+            label="Track Popularity"
             detail={diagnostics?.spotify
-              ? `${diagnostics.spotify.tracksChecked} checked, ${diagnostics.spotify.tracksPopular} popular${diagnostics.spotify.tracksUnchecked ? ` (${diagnostics.spotify.tracksUnchecked} unchecked)` : ''}`
+              ? diagnostics.spotify.disabled
+                ? `Spotify needs Premium. ${diagnostics.spotify.lastfmConfigured ? 'Using Last.fm.' : 'Add LASTFM_API_KEY for free alternative.'} ${diagnostics.spotify.tracksPopular} popular of ${diagnostics.spotify.tracksChecked} checked`
+                : diagnostics.spotify.working
+                  ? `Spotify OK. ${diagnostics.spotify.tracksPopular} popular of ${diagnostics.spotify.tracksChecked} checked${diagnostics.spotify.tracksUnchecked ? ` (${diagnostics.spotify.tracksUnchecked} unchecked)` : ''}`
+                  : `Not configured. ${diagnostics.spotify.tracksChecked} checked, ${diagnostics.spotify.tracksPopular} popular`
               : 'Checking...'}
           />
           <StatusBadge
@@ -247,6 +254,19 @@ export default function SettingsView({
           >
             {popularityRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />}
             Run Popularity Check
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm('Reset all popularity data? This lets you re-run the check with a different API (e.g. after adding LASTFM_API_KEY).')) return;
+              try {
+                await fetch('/api/popularity', { method: 'DELETE' });
+                fetchDiagnostics();
+              } catch { /* ignore */ }
+            }}
+            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1 text-amber-400"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Reset Popularity Data
           </button>
         </div>
         {popularityProgress && (
@@ -324,6 +344,26 @@ export default function SettingsView({
                   <p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Lyrics zoom */}
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Lyrics Text Size</label>
+            <p className="text-xs text-muted-foreground mb-2">Zoom level for lyrics display (smaller = more lines visible)</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value={lyricsZoom}
+                onChange={(e) => onLyricsZoomChange(parseInt(e.target.value))}
+                className="flex-1 h-2 accent-primary"
+              />
+              <span className="text-sm font-mono w-16 text-right">
+                {lyricsZoom === 1 ? 'Tiny' : lyricsZoom === 2 ? 'Small' : lyricsZoom === 3 ? 'Medium' : lyricsZoom === 4 ? 'Large' : 'Huge'}
+              </span>
             </div>
           </div>
 

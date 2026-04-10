@@ -130,19 +130,38 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
   );
 }
 
-// Karaoke-style lyrics component
-function KaraokeLyrics({ lyrics, currentTime, duration }: {
+// Zoom level font sizes: [active, inactive] in clamp values
+const LYRICS_ZOOM_LEVELS: Record<number, { active: string; inactive: string; lineHeight: string; gap: string }> = {
+  1: { active: 'clamp(0.9rem,1.5vw,1.25rem)', inactive: 'clamp(0.75rem,1.2vw,1rem)', lineHeight: '1.5', gap: '0.5rem' },
+  2: { active: 'clamp(1.1rem,2vw,1.75rem)', inactive: 'clamp(0.875rem,1.5vw,1.25rem)', lineHeight: '1.45', gap: '0.625rem' },
+  3: { active: 'clamp(1.35rem,2.5vw,2.25rem)', inactive: 'clamp(1rem,1.8vw,1.5rem)', lineHeight: '1.4', gap: '0.75rem' },
+  4: { active: 'clamp(1.75rem,3.2vw,3rem)', inactive: 'clamp(1.25rem,2.2vw,2rem)', lineHeight: '1.35', gap: '1rem' },
+  5: { active: 'clamp(2.25rem,4vw,4rem)', inactive: 'clamp(1.5rem,2.8vw,2.5rem)', lineHeight: '1.3', gap: '1.25rem' },
+};
+
+// Smooth-scrolling lyrics component
+function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
   lyrics: string | null;
   currentTime: number;
   duration: number;
+  zoom?: number;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const [activeLineIdx, setActiveLineIdx] = useState(0);
+  const lastScrollTime = useRef(0);
 
   const allLines = useMemo(() => {
     if (!lyrics) return [];
     return lyrics.split('\n').filter(line => line.trim().length > 0);
   }, [lyrics]);
 
+  // Reset refs when lines change
+  useEffect(() => {
+    lineRefs.current = new Array(allLines.length).fill(null);
+  }, [allLines.length]);
+
+  // Track active line based on playback progress
   useEffect(() => {
     if (allLines.length === 0 || duration <= 0) {
       setActiveLineIdx(0);
@@ -153,6 +172,31 @@ function KaraokeLyrics({ lyrics, currentTime, duration }: {
     setActiveLineIdx(Math.max(0, Math.min(allLines.length - 1, estimatedLine)));
   }, [currentTime, duration, allLines]);
 
+  // Smooth scroll to active line - centered in container
+  useEffect(() => {
+    const container = containerRef.current;
+    const activeLine = lineRefs.current[activeLineIdx];
+    if (!container || !activeLine) return;
+
+    // Throttle scrolling to avoid jerkiness - scroll at most every 400ms
+    const now = Date.now();
+    if (now - lastScrollTime.current < 400) return;
+    lastScrollTime.current = now;
+
+    const containerRect = container.getBoundingClientRect();
+    const lineRect = activeLine.getBoundingClientRect();
+    const containerCenter = containerRect.height / 2;
+    const lineCenter = lineRect.top - containerRect.top + lineRect.height / 2;
+    const scrollOffset = lineCenter - containerCenter;
+
+    container.scrollBy({
+      top: scrollOffset,
+      behavior: 'smooth',
+    });
+  }, [activeLineIdx]);
+
+  const zoomConfig = LYRICS_ZOOM_LEVELS[zoom] ?? LYRICS_ZOOM_LEVELS[3];
+
   if (!lyrics) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
@@ -162,32 +206,48 @@ function KaraokeLyrics({ lyrics, currentTime, duration }: {
     );
   }
 
-  // Show a window: 1 before, current, 2 after
-  const startIdx = Math.max(0, activeLineIdx - 1);
-  const visibleLines = allLines.slice(startIdx, startIdx + 4);
-  const activeInWindow = activeLineIdx - startIdx;
-
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 overflow-hidden">
-      <div className="space-y-4 w-full text-center">
-        {visibleLines.map((line, i) => (
-          <motion.p
-            key={`${startIdx + i}-${line.slice(0, 20)}`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className={`font-display leading-snug transition-all duration-300 ${
-              i === activeInWindow
-                ? 'text-[clamp(1.5rem,3.2vw,3rem)] font-bold text-foreground'
-                : i < activeInWindow
-                  ? 'text-[clamp(1rem,2vw,1.75rem)] text-muted-foreground/40'
-                  : 'text-[clamp(1.125rem,2.2vw,2rem)] text-muted-foreground/60'
-            }`}
-          >
-            {line}
-          </motion.p>
-        ))}
+    <div
+      ref={containerRef}
+      className="h-full overflow-y-auto px-6 py-8"
+      style={{
+        maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+        scrollbarWidth: 'none',
+      }}
+    >
+      {/* Top spacer to allow first lines to center */}
+      <div style={{ height: '40%' }} />
+      <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: zoomConfig.gap }}>
+        {allLines.map((line, i) => {
+          const isActive = i === activeLineIdx;
+          const distance = Math.abs(i - activeLineIdx);
+          // Fade out lines farther from active
+          const opacity = isActive ? 1 : Math.max(0.15, 1 - distance * 0.15);
+
+          return (
+            <p
+              key={`${i}-${line.slice(0, 15)}`}
+              ref={(el) => { lineRefs.current[i] = el; }}
+              className="font-display transition-all duration-700 ease-out"
+              style={{
+                fontSize: isActive ? zoomConfig.active : zoomConfig.inactive,
+                lineHeight: zoomConfig.lineHeight,
+                fontWeight: isActive ? 700 : 400,
+                color: isActive
+                  ? 'var(--foreground)'
+                  : 'var(--muted-foreground)',
+                opacity,
+                transform: isActive ? 'scale(1.02)' : 'scale(1)',
+              }}
+            >
+              {line}
+            </p>
+          );
+        })}
       </div>
+      {/* Bottom spacer to allow last lines to center */}
+      <div style={{ height: '40%' }} />
     </div>
   );
 }
@@ -197,9 +257,10 @@ interface NowPlayingViewProps {
   eqColorScheme?: string;
   previousTrackCount?: number;
   columnLayout?: string;
+  lyricsZoom?: number;
 }
 
-export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic', previousTrackCount = 3, columnLayout = 'balanced' }: NowPlayingViewProps) {
+export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic', previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3 }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
     togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode
@@ -318,7 +379,7 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
                 <span className="ml-2 text-muted-foreground text-[clamp(0.875rem,1.3vw,1.125rem)]">Searching for lyrics...</span>
               </div>
             ) : (
-              <KaraokeLyrics lyrics={lyrics} currentTime={currentTime} duration={duration} />
+              <KaraokeLyrics lyrics={lyrics} currentTime={currentTime} duration={duration} zoom={lyricsZoom} />
             )}
           </div>
         </div>

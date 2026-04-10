@@ -35,6 +35,7 @@ function JukeboxInner() {
   const [keyboardSize, setKeyboardSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [columnLayout, setColumnLayout] = useState('balanced');
   const [artistRows, setArtistRows] = useState(4);
+  const [lyricsZoom, setLyricsZoom] = useState(3);
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -57,6 +58,7 @@ function JukeboxInner() {
         if (s.keyboardSize !== undefined) setKeyboardSize(s.keyboardSize);
         if (s.columnLayout !== undefined) setColumnLayout(s.columnLayout);
         if (s.artistRows !== undefined) setArtistRows(s.artistRows);
+        if (s.lyricsZoom !== undefined) setLyricsZoom(s.lyricsZoom);
       }
     } catch { /* ignore */ }
   }, []);
@@ -65,10 +67,10 @@ function JukeboxInner() {
   useEffect(() => {
     try {
       localStorage.setItem('jukebox-settings', JSON.stringify({
-        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows
+        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, lyricsZoom
       }));
     } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, lyricsZoom]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -165,6 +167,7 @@ function JukeboxInner() {
             eqColorScheme={eqColorScheme}
             previousTrackCount={previousTrackCount}
             columnLayout={columnLayout}
+            lyricsZoom={lyricsZoom}
           />
         )}
         {view === 'artist-detail' && (
@@ -198,6 +201,8 @@ function JukeboxInner() {
             onColumnLayoutChange={setColumnLayout}
             artistRows={artistRows}
             onArtistRowsChange={setArtistRows}
+            lyricsZoom={lyricsZoom}
+            onLyricsZoomChange={setLyricsZoom}
           />
         )}
       </main>

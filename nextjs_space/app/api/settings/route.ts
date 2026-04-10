@@ -21,26 +21,21 @@ export async function GET() {
     const spotifyClientId = process.env.SPOTIFY_CLIENT_ID ?? '';
     const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET ?? '';
     const spotifyConfigured = !!(spotifyClientId && spotifyClientSecret);
+    const lastfmConfigured = !!(process.env.LASTFM_API_KEY ?? '');
 
-    // Check Spotify token works
-    let spotifyWorking = false;
+    // Check Spotify status with actual search test
+    let spotifyStatus: { working: boolean; error?: string; disabled?: boolean } = { working: false };
     if (spotifyConfigured) {
       try {
-        const basic = Buffer.from(`${spotifyClientId}:${spotifyClientSecret}`).toString('base64');
-        const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${basic}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: 'grant_type=client_credentials',
-        });
-        spotifyWorking = tokenRes.ok;
-      } catch { /* ignore */ }
+        const { checkSpotifyStatus } = await import('@/lib/spotify');
+        spotifyStatus = await checkSpotifyStatus();
+      } catch (e: any) {
+        spotifyStatus = { working: false, error: e?.message };
+      }
     }
 
     const tracksWithPop = await prisma.cachedTrack.count({ where: { spotifyChecked: true } });
-    const tracksWithHighPop = await prisma.cachedTrack.count({ where: { popularity: { gte: 30 } } });
+    const tracksWithHighPop = await prisma.cachedTrack.count({ where: { popularity: { gt: 0 } } });
     const tracksUnchecked = await prisma.cachedTrack.count({ where: { spotifyChecked: false } });
 
     return NextResponse.json({
@@ -59,10 +54,13 @@ export async function GET() {
       genius: geniusStatus,
       spotify: {
         configured: spotifyConfigured,
-        working: spotifyWorking,
+        working: spotifyStatus.working,
+        error: spotifyStatus.error,
+        disabled: spotifyStatus.disabled,
         tracksChecked: tracksWithPop,
         tracksPopular: tracksWithHighPop,
         tracksUnchecked: tracksUnchecked,
+        lastfmConfigured,
       },
     });
   } catch (e: any) {
