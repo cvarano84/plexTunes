@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album, Volume2 } from 'lucide-react';
+import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
+import AudioControls from './audio-controls';
 
 function formatDuration(ms: number | null | undefined): string {
   if (!ms) return '0:00';
@@ -308,8 +309,7 @@ interface NowPlayingViewProps {
 export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic', previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3 }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
-    togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode,
-    volume, setVolume
+    togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode
   } = usePlayer();
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
@@ -561,61 +561,41 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
           <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} />
         </div>
         <div className="px-4 py-2 border-t border-border/10">
-          <div className="flex items-center gap-4 mb-2">
-            {/* Volume slider */}
-            <div className="flex items-center gap-2 flex-shrink-0" style={{ width: 'clamp(120px, 14vw, 220px)' }}>
-              <Volume2 className="w-[clamp(1rem,1.4vw,1.25rem)] h-[clamp(1rem,1.4vw,1.25rem)] text-muted-foreground flex-shrink-0" />
-              <div
-                className="flex-1 h-2 bg-muted/50 rounded-full cursor-pointer group relative"
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const pct = Math.max(0, Math.min(1, x / rect.width));
-                  setVolume(pct);
-                }}
-              >
-                <div
-                  className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full transition-all"
-                  style={{ width: `${(volume ?? 1) * 100}%` }}
-                />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary shadow-lg border-2 border-background"
-                  style={{ left: `calc(${(volume ?? 1) * 100}% - 8px)` }}
-                />
-              </div>
-            </div>
-            {/* Progress bar */}
+          {/* Progress bar - full width */}
+          <div
+            className="h-1.5 bg-muted/50 rounded-full cursor-pointer group mb-2"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const pct = x / rect.width;
+              seek(pct * duration);
+            }}
+          >
             <div
-              className="flex-1 h-1.5 bg-muted/50 rounded-full cursor-pointer group"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const pct = x / rect.width;
-                seek(pct * duration);
-              }}
-            >
-              <div
-                className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all group-hover:h-2"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+              className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all group-hover:h-2"
+              style={{ width: `${progress}%` }}
+            />
           </div>
-          <div className="flex items-center justify-center gap-4">
-            <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground font-mono w-12 text-right">{formatTime(currentTime)}</span>
-            <button onClick={prevTrack} className="w-[clamp(2.25rem,3vw,3rem)] h-[clamp(2.25rem,3vw,3rem)] rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors">
-              <SkipBack className="w-[clamp(1.125rem,1.5vw,1.5rem)] h-[clamp(1.125rem,1.5vw,1.5rem)]" />
-            </button>
-            <button onClick={togglePlay} className="w-[clamp(3rem,4vw,4rem)] h-[clamp(3rem,4vw,4rem)] rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors shadow-lg">
-              {isPlaying ? (
-                <svg className="w-[clamp(1.25rem,1.8vw,1.75rem)] h-[clamp(1.25rem,1.8vw,1.75rem)] text-primary-foreground" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-              ) : (
-                <Play className="w-[clamp(1.25rem,1.8vw,1.75rem)] h-[clamp(1.25rem,1.8vw,1.75rem)] text-primary-foreground ml-0.5" />
-              )}
-            </button>
-            <button onClick={nextTrack} className="w-[clamp(2.25rem,3vw,3rem)] h-[clamp(2.25rem,3vw,3rem)] rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors">
-              <SkipForward className="w-[clamp(1.125rem,1.5vw,1.5rem)] h-[clamp(1.125rem,1.5vw,1.5rem)]" />
-            </button>
-            <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground font-mono w-12">{formatTime(duration)}</span>
+          {/* Controls row: AudioControls (left) | transport (center) | time (right) */}
+          <div className="flex items-center gap-4">
+            <AudioControls />
+            <div className="flex-1 flex items-center justify-center gap-4">
+              <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground font-mono w-12 text-right">{formatTime(currentTime)}</span>
+              <button onClick={prevTrack} className="w-[clamp(2.25rem,3vw,3rem)] h-[clamp(2.25rem,3vw,3rem)] rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors">
+                <SkipBack className="w-[clamp(1.125rem,1.5vw,1.5rem)] h-[clamp(1.125rem,1.5vw,1.5rem)]" />
+              </button>
+              <button onClick={togglePlay} className="w-[clamp(3rem,4vw,4rem)] h-[clamp(3rem,4vw,4rem)] rounded-full bg-primary flex items-center justify-center hover:bg-primary/90 transition-colors shadow-lg">
+                {isPlaying ? (
+                  <svg className="w-[clamp(1.25rem,1.8vw,1.75rem)] h-[clamp(1.25rem,1.8vw,1.75rem)] text-primary-foreground" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                ) : (
+                  <Play className="w-[clamp(1.25rem,1.8vw,1.75rem)] h-[clamp(1.25rem,1.8vw,1.75rem)] text-primary-foreground ml-0.5" />
+                )}
+              </button>
+              <button onClick={nextTrack} className="w-[clamp(2.25rem,3vw,3rem)] h-[clamp(2.25rem,3vw,3rem)] rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors">
+                <SkipForward className="w-[clamp(1.125rem,1.5vw,1.5rem)] h-[clamp(1.125rem,1.5vw,1.5rem)]" />
+              </button>
+              <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground font-mono w-12">{formatTime(duration)}</span>
+            </div>
           </div>
         </div>
       </div>

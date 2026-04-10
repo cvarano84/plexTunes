@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music2, ListMusic, ChevronUp } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 import PlexImage from './plex-image';
+import AudioControls from './audio-controls';
 
 interface PlayerBarProps {
   onNavigate: (view: ViewType, opts?: any) => void;
@@ -24,16 +25,12 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
     isPlaying,
     currentTime,
     duration,
-    volume,
     togglePlay,
     nextTrack,
     prevTrack,
     seek,
-    setVolume,
     queue,
   } = usePlayer();
-
-  const [showVolume, setShowVolume] = useState(false);
 
   if (!currentTrack) return null;
 
@@ -63,7 +60,10 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
       </div>
 
       <div className="bg-card/95 backdrop-blur-xl border-t border-border/30">
-        <div className="max-w-[1200px] mx-auto px-4 h-20 flex items-center gap-4">
+        <div className="px-4 h-20 flex items-center gap-4">
+          {/* Audio controls: volume + EQ (far left) */}
+          <AudioControls compact />
+
           {/* Track info */}
           <button
             onClick={() => onNavigate?.('now-playing')}
@@ -114,37 +114,6 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
             <span>{formatTime(currentTime)}</span>
             <span>/</span>
             <span>{formatTime(duration)}</span>
-          </div>
-
-          {/* Volume */}
-          <div className="relative hidden sm:block">
-            <button
-              onClick={() => setShowVolume(!showVolume)}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors"
-            >
-              {volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-            </button>
-            <AnimatePresence>
-              {showVolume && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-card border border-border rounded-xl p-3 shadow-lg"
-                >
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={volume}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVolume(parseFloat(e?.target?.value ?? '0.5'))}
-                    className="w-24 h-2 accent-primary"
-                    style={{ writingMode: 'horizontal-tb' as any }}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
           {/* Queue button */}

@@ -25,6 +25,24 @@ interface PlayerState {
   queueIndex: number;
 }
 
+export interface EqGains {
+  bass: number;   // -12 to +12 dB
+  mid: number;    // -12 to +12 dB
+  treble: number; // -12 to +12 dB
+}
+
+export const EQ_PRESETS: Record<string, EqGains> = {
+  flat:       { bass: 0,  mid: 0,  treble: 0 },
+  rock:       { bass: 4,  mid: -1, treble: 3 },
+  pop:        { bass: 1,  mid: 3,  treble: 2 },
+  jazz:       { bass: 2,  mid: 0,  treble: 3 },
+  classical:  { bass: 0,  mid: 0,  treble: 3 },
+  'bass boost': { bass: 8, mid: 0, treble: 0 },
+  'treble boost': { bass: 0, mid: 0, treble: 6 },
+  'vocal':    { bass: -2, mid: 4,  treble: 1 },
+  'electronic': { bass: 5, mid: -2, treble: 4 },
+};
+
 interface PlayerContextType extends PlayerState {
   playTrack: (track: TrackInfo) => void;
   playQueue: (tracks: TrackInfo[], startIndex?: number) => void;
@@ -38,6 +56,10 @@ interface PlayerContextType extends PlayerState {
   setCurrentStationId: (id: string | null) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
   analyserNode: AnalyserNode | null;
+  eqGains: EqGains;
+  setEqGain: (band: keyof EqGains, value: number) => void;
+  setEqPreset: (name: string) => void;
+  eqPreset: string;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -60,11 +82,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queueIndex, setQueueIndex] = useState(-1);
   const [currentStationId, setCurrentStationId] = useState<string | null>(null);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [eqGains, setEqGains] = useState<EqGains>({ bass: 0, mid: 0, treble: 0 });
+  const [eqPreset, setEqPresetState] = useState('flat');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fetchingMoreRef = useRef(false);
   // Persistent Web Audio refs - survive across component mounts/unmounts
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const eqNodesRef = useRef<{ bass: BiquadFilterNode; mid: BiquadFilterNode; treble: BiquadFilterNode } | null>(null);
 
   // Initialize Web Audio API once the audio element exists
   // This MUST live in the provider so it persists across view changes
@@ -77,15 +102,54 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       try {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const source = ctx.createMediaElementSource(audio);
+
+        // 3-band EQ: lowshelf (bass), peaking (mid), highshelf (treble)
+        const bassFilter = ctx.createBiquadFilter();
+        bassFilter.type = 'lowshelf';
+        bassFilter.frequency.value = 250;
+        bassFilter.gain.value = 0;
+
+        const midFilter = ctx.createBiquadFilter();
+        midFilter.type = 'peaking';
+        midFilter.frequency.value = 1500;
+        midFilter.Q.value = 0.7;
+        midFilter.gain.value = 0;
+
+        const trebleFilter = ctx.createBiquadFilter();
+        trebleFilter.type = 'highshelf';
+        trebleFilter.frequency.value = 4000;
+        trebleFilter.gain.value = 0;
+
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.7;
-        source.connect(analyser);
+
+        // Chain: source -> bass -> mid -> treble -> analyser -> destination
+        source.connect(bassFilter);
+        bassFilter.connect(midFilter);
+        midFilter.connect(trebleFilter);
+        trebleFilter.connect(analyser);
         analyser.connect(ctx.destination);
+
         audioContextRef.current = ctx;
         sourceNodeRef.current = source;
+        eqNodesRef.current = { bass: bassFilter, mid: midFilter, treble: trebleFilter };
         setAnalyserNode(analyser);
-        // Resume context on user gesture
+
+        // Load saved EQ from localStorage
+        try {
+          const savedEq = localStorage.getItem('jukebox_eq');
+          const savedPreset = localStorage.getItem('jukebox_eq_preset');
+          if (savedEq) {
+            const parsed = JSON.parse(savedEq);
+            bassFilter.gain.value = parsed.bass ?? 0;
+            midFilter.gain.value = parsed.mid ?? 0;
+            trebleFilter.gain.value = parsed.treble ?? 0;
+            setEqGains(parsed);
+          }
+          if (savedPreset) setEqPresetState(savedPreset);
+        } catch { /* ignore */ }
+
         if (ctx.state === 'suspended') {
           ctx.resume().catch(() => {});
         }
@@ -146,6 +210,37 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return copy;
     });
   }, [queueIndex]);
+
+  const setEqGain = useCallback((band: keyof EqGains, value: number) => {
+    const nodes = eqNodesRef.current;
+    if (nodes) {
+      nodes[band].gain.value = value;
+    }
+    setEqGains(prev => {
+      const updated = { ...prev, [band]: value };
+      try { localStorage.setItem('jukebox_eq', JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+    setEqPresetState('custom');
+    try { localStorage.setItem('jukebox_eq_preset', 'custom'); } catch { /* ignore */ }
+  }, []);
+
+  const setEqPreset = useCallback((name: string) => {
+    const preset = EQ_PRESETS[name];
+    if (!preset) return;
+    const nodes = eqNodesRef.current;
+    if (nodes) {
+      nodes.bass.gain.value = preset.bass;
+      nodes.mid.gain.value = preset.mid;
+      nodes.treble.gain.value = preset.treble;
+    }
+    setEqGains(preset);
+    setEqPresetState(name);
+    try {
+      localStorage.setItem('jukebox_eq', JSON.stringify(preset));
+      localStorage.setItem('jukebox_eq_preset', name);
+    } catch { /* ignore */ }
+  }, []);
 
   const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
     if (fetchingMoreRef.current) return [];
@@ -319,6 +414,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setCurrentStationId,
         audioRef,
         analyserNode,
+        eqGains,
+        setEqGain,
+        setEqPreset,
+        eqPreset,
       }}
     >
       {children}
