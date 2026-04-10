@@ -13,24 +13,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Title and artist required' }, { status: 400 });
     }
 
-    const song = await searchGeniusSong(title, artist);
-    if (!song) {
-      return NextResponse.json({ lyrics: null, message: 'Song not found on Genius' });
+    const searchResult = await searchGeniusSong(title, artist);
+    
+    if (!searchResult.song) {
+      return NextResponse.json({ 
+        lyrics: null, 
+        message: searchResult.error ?? 'Song not found on Genius',
+        debug: {
+          tokenValid: searchResult.tokenValid,
+          searchWorked: searchResult.searchWorked,
+          error: searchResult.error,
+        }
+      });
     }
 
-    const lyrics = await fetchLyricsFromGenius(song?.url ?? '');
+    const lyricsResult = await fetchLyricsFromGenius(searchResult.song?.url ?? '');
     
     return NextResponse.json({
-      lyrics: lyrics ?? null,
+      lyrics: lyricsResult.lyrics ?? null,
       songInfo: {
-        title: song?.title ?? title,
-        artist: song?.primary_artist?.name ?? artist,
-        imageUrl: song?.song_art_image_url ?? null,
-        geniusUrl: song?.url ?? null,
+        title: searchResult.song?.title ?? title,
+        artist: searchResult.song?.primary_artist?.name ?? artist,
+        imageUrl: searchResult.song?.song_art_image_url ?? null,
+        geniusUrl: searchResult.song?.url ?? null,
       },
+      debug: {
+        tokenValid: searchResult.tokenValid,
+        searchWorked: searchResult.searchWorked,
+        geniusUrl: searchResult.song?.url,
+        scrapeError: lyricsResult.error,
+      }
     });
   } catch (e: any) {
     console.error('Lyrics error:', e?.message);
-    return NextResponse.json({ lyrics: null, error: 'Failed to fetch lyrics' });
+    return NextResponse.json({ lyrics: null, error: 'Failed to fetch lyrics', debug: { error: e?.message } });
   }
 }

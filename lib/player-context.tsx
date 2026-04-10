@@ -20,6 +20,8 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   volume: number;
+  currentStationId: string | null;
+  queueIndex: number;
 }
 
 interface PlayerContextType extends PlayerState {
@@ -31,6 +33,7 @@ interface PlayerContextType extends PlayerState {
   togglePlay: () => void;
   seek: (time: number) => void;
   setVolume: (vol: number) => void;
+  setCurrentStationId: (id: string | null) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
@@ -52,13 +55,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.8);
   const [queueIndex, setQueueIndex] = useState(-1);
+  const [currentStationId, setCurrentStationId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fetchingMoreRef = useRef(false);
 
   const playTrack = useCallback((track: TrackInfo) => {
     setCurrentTrack(track);
     setQueue([track]);
     setQueueIndex(0);
     setIsPlaying(true);
+    setCurrentStationId(null);
   }, []);
 
   const playQueue = useCallback((tracks: TrackInfo[], startIndex: number = 0) => {
@@ -73,6 +79,33 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setQueue(prev => [...(prev ?? []), track]);
   }, []);
 
+  // Fetch more tracks from station when running low
+  const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
+    if (fetchingMoreRef.current) return [];
+    fetchingMoreRef.current = true;
+    try {
+      const res = await fetch(`/api/stations/${stationId}/tracks`);
+      const data = await res?.json?.();
+      const newTracks: TrackInfo[] = (data?.tracks ?? [])
+        .filter((t: any) => !existingIds.has(t?.id ?? ''))
+        .map((t: any) => ({
+          id: t?.id ?? '',
+          title: t?.title ?? '',
+          artistName: t?.artist?.name ?? t?.artistName ?? '',
+          albumTitle: t?.album?.title ?? t?.albumTitle ?? '',
+          thumb: t?.thumb ?? t?.album?.thumb ?? null,
+          mediaKey: t?.mediaKey ?? null,
+          duration: t?.duration ?? null,
+          ratingKey: t?.ratingKey ?? '',
+        }));
+      return newTracks;
+    } catch {
+      return [];
+    } finally {
+      fetchingMoreRef.current = false;
+    }
+  }, []);
+
   const nextTrack = useCallback(() => {
     setQueueIndex(prev => {
       const next = prev + 1;
@@ -84,6 +117,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return prev;
     });
   }, [queue]);
+
+  // Auto-fetch more tracks when nearing end of station queue
+  useEffect(() => {
+    if (!currentStationId || queueIndex < 0) return;
+    const remaining = queue.length - queueIndex - 1;
+    if (remaining <= 3) {
+      const existingIds = new Set(queue.map(t => t.id));
+      fetchMoreStationTracks(currentStationId, existingIds).then(newTracks => {
+        if (newTracks.length > 0) {
+          setQueue(prev => [...prev, ...newTracks]);
+        }
+      });
+    }
+  }, [queueIndex, currentStationId, queue.length, fetchMoreStationTracks, queue]);
 
   const prevTrack = useCallback(() => {
     setQueueIndex(prev => {
@@ -171,6 +218,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         currentTime,
         duration,
         volume,
+        currentStationId,
+        queueIndex,
         playTrack,
         playQueue,
         addToQueue,
@@ -179,6 +228,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         togglePlay,
         seek,
         setVolume,
+        setCurrentStationId,
         audioRef,
       }}
     >
