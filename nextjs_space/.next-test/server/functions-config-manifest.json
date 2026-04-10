@@ -1,0 +1,1 @@
+{"version":1,"functions":{"/api/albums/[id]":{},"/api/artists":{},"/api/lyrics":{},"/api/plex/config":{},"/api/plex/library":{},"/api/artists/[id]":{},"/api/plex/image":{},"/api/plex/stream":{},"/api/search":{},"/api/plex/sync":{},"/api/popularity":{},"/api/stations/[id]/tracks":{},"/api/stations":{},"/jukebox":{},"/":{},"/setup":{}}}

@@ -1,0 +1,19 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/artists/[id]/route": "app/api/artists/[id]/route.js",
+  "/api/artists/route": "app/api/artists/route.js",
+  "/api/plex/stream/route": "app/api/plex/stream/route.js",
+  "/api/plex/library/route": "app/api/plex/library/route.js",
+  "/api/plex/config/route": "app/api/plex/config/route.js",
+  "/api/lyrics/route": "app/api/lyrics/route.js",
+  "/api/albums/[id]/route": "app/api/albums/[id]/route.js",
+  "/api/search/route": "app/api/search/route.js",
+  "/api/plex/image/route": "app/api/plex/image/route.js",
+  "/api/popularity/route": "app/api/popularity/route.js",
+  "/api/stations/[id]/tracks/route": "app/api/stations/[id]/tracks/route.js",
+  "/api/plex/sync/route": "app/api/plex/sync/route.js",
+  "/setup/page": "app/setup/page.js",
+  "/page": "app/page.js",
+  "/jukebox/page": "app/jukebox/page.js",
+  "/api/stations/route": "app/api/stations/route.js"
+}
