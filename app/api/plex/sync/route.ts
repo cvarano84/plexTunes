@@ -189,16 +189,16 @@ export async function POST(req: NextRequest) {
       data: { syncProgress: 90, syncMessage: 'Generating stations...' },
     });
 
-    // Generate stations based on what's in the library
+    // Generate stations based on what's in the library (with album genre fallback)
     const allCachedTracks = await prisma.cachedTrack.findMany({
-      select: { year: true, genre: true, popularity: true },
+      select: { year: true, genre: true, popularity: true, album: { select: { genre: true } } },
     });
 
     for (const template of STATION_TEMPLATES) {
       const matchingTracks = allCachedTracks?.filter?.((t: any) => {
         const trackDecade = getDecadeFromYear(t?.year);
         if (trackDecade !== template.decade) return false;
-        const trackGenres = mapGenreToStation(t?.genre);
+        const trackGenres = mapGenreToStation(t?.genre, t?.album?.genre);
         return trackGenres?.includes?.(template.genre) ?? false;
       }) ?? [];
 
@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
     ];
     for (const hits of HITS_STATIONS) {
       const genreTracks = allCachedTracks.filter((t: any) => {
-        const mapped = mapGenreToStation(t?.genre);
+        const mapped = mapGenreToStation(t?.genre, t?.album?.genre);
         return mapped.includes(hits.genre);
       });
       if (genreTracks.length >= 10) {

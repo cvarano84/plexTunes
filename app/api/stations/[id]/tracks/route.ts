@@ -69,15 +69,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         take: 500,
         include: {
           artist: { select: { name: true, thumb: true } },
-          album: { select: { title: true, thumb: true, year: true } },
+          album: { select: { title: true, thumb: true, year: true, genre: true } },
         },
       });
 
-      // Further filter by genre if specified
+      // Further filter by genre if specified (with album genre fallback)
       let filtered = tracks;
       if (station.genre) {
         filtered = tracks.filter((t: any) => {
-          const stationGenres = mapGenreToStation(t?.genre);
+          const stationGenres = mapGenreToStation(t?.genre, t?.album?.genre);
           return stationGenres.includes(station.genre ?? '');
         });
       }
@@ -96,19 +96,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ station, tracks: selected });
     }
 
-    // Standard station: match by decade AND genre
+    // Standard station: match by decade AND genre (with album genre fallback)
     const allTracks = await prisma.cachedTrack.findMany({
       where: { year: { not: null } },
       include: {
         artist: { select: { name: true, thumb: true } },
-        album: { select: { title: true, thumb: true, year: true } },
+        album: { select: { title: true, thumb: true, year: true, genre: true } },
       },
     });
 
     const matchingTracks = allTracks?.filter?.((t: any) => {
       const trackDecade = getDecadeFromYear(t?.year);
       if (trackDecade !== station?.decade) return false;
-      const trackGenres = mapGenreToStation(t?.genre);
+      const trackGenres = mapGenreToStation(t?.genre, t?.album?.genre);
       return trackGenres?.includes?.(station?.genre ?? '') ?? false;
     }) ?? [];
 

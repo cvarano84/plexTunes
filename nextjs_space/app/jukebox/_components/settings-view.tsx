@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap } from 'lucide-react';
+import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap, SlidersHorizontal } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SettingsViewProps {
@@ -113,6 +113,14 @@ export default function SettingsView({
   const [newStationName, setNewStationName] = useState('');
   const [stationSaving, setStationSaving] = useState(false);
 
+  // Station tuning state
+  const [tuningMinPop, setTuningMinPop] = useState(40);
+  const [tuningPreview, setTuningPreview] = useState<any>(null);
+  const [tuningLoading, setTuningLoading] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
+  const [tuningStats, setTuningStats] = useState<any>(null);
+  const tuningTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const DECADES = ['1950s','1960s','1970s','1980s','1990s','2000s','2010s','2020s'];
   const GENRES = ['Rock','Pop','Dance','Hip-Hop','R&B','Country','New Wave','Soul'];
 
@@ -175,6 +183,36 @@ export default function SettingsView({
     } catch { setStations([]); }
     setStationsLoading(false);
   }, []);
+
+  const fetchStationPreview = useCallback(async (minPop: number) => {
+    setTuningLoading(true);
+    try {
+      const res = await fetch(`/api/stations/rescan?minPopularity=${minPop}`);
+      const data = await res.json();
+      setTuningPreview(data?.stations ?? []);
+      setTuningStats(data?.stats ?? null);
+    } catch { setTuningPreview(null); }
+    setTuningLoading(false);
+  }, []);
+
+  const handleRescanStations = async () => {
+    setRescanning(true);
+    try {
+      const res = await fetch('/api/stations/rescan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minPopularity: tuningMinPop }),
+      });
+      const data = await res.json();
+      setTuningPreview(data?.stations ?? []);
+      setTuningStats(data?.stats ?? null);
+      fetchStations(); // refresh the main station list
+    } catch { /* ignore */ }
+    setRescanning(false);
+  };
+
+  // Load preview on mount
+  useEffect(() => { fetchStationPreview(tuningMinPop); }, []);
 
   const handleAddStation = async () => {
     if (stationSaving) return;
@@ -684,6 +722,105 @@ export default function SettingsView({
         </div>
       </motion.div>
 
+      {/* Station Tuning */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <SlidersHorizontal className="w-5 h-5 text-accent" />
+          Station Tuning
+        </h3>
+
+        {/* Stats bar */}
+        {tuningStats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <div className="p-2 rounded-lg bg-secondary/40 border border-border/20 text-center">
+              <p className="text-lg font-bold text-primary">{tuningStats.totalTracks?.toLocaleString?.()}</p>
+              <p className="text-[10px] text-muted-foreground">Total Tracks</p>
+            </div>
+            <div className="p-2 rounded-lg bg-secondary/40 border border-border/20 text-center">
+              <p className="text-lg font-bold text-primary">{tuningStats.withGenre?.toLocaleString?.()}</p>
+              <p className="text-[10px] text-muted-foreground">Have Genre</p>
+            </div>
+            <div className="p-2 rounded-lg bg-secondary/40 border border-border/20 text-center">
+              <p className="text-lg font-bold text-primary">{tuningStats.withYear?.toLocaleString?.()}</p>
+              <p className="text-[10px] text-muted-foreground">Have Year</p>
+            </div>
+            <div className="p-2 rounded-lg bg-secondary/40 border border-border/20 text-center">
+              <p className="text-lg font-bold text-primary">{tuningStats.withPopularity?.toLocaleString?.()}</p>
+              <p className="text-[10px] text-muted-foreground">Have Popularity</p>
+            </div>
+          </div>
+        )}
+
+        {/* Min popularity slider for hits stations */}
+        <div className="p-4 rounded-lg bg-secondary/40 border border-border/20 mb-3">
+          <label className="text-sm font-medium">Hits Station Min Popularity</label>
+          <p className="text-xs text-muted-foreground mb-2">Lower this value to include more tracks in Hits stations. Standard stations (decade+genre) are not affected by this.</p>
+          <div className="flex items-center gap-3">
+            <input
+              type="range" min="0" max="80" step="5" value={tuningMinPop}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setTuningMinPop(val);
+                if (tuningTimerRef.current) clearTimeout(tuningTimerRef.current);
+                tuningTimerRef.current = setTimeout(() => fetchStationPreview(val), 400);
+              }}
+              className="flex-1 h-2 accent-primary"
+            />
+            <span className="text-sm font-mono w-10 text-right">{tuningMinPop}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={handleRescanStations}
+              disabled={rescanning}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm flex items-center gap-2"
+            >
+              {rescanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Apply &amp; Rescan Stations
+            </button>
+            <p className="text-xs text-muted-foreground">Updates all station track counts and saves the new min popularity for Hits stations.</p>
+          </div>
+        </div>
+
+        {/* Real-time preview of station track counts */}
+        <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-sm font-medium">
+              Station Track Counts
+              {tuningLoading && <Loader2 className="w-3 h-3 animate-spin inline ml-2" />}
+            </label>
+            <button onClick={() => fetchStationPreview(tuningMinPop)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <RefreshCw className="w-3 h-3" /> Refresh
+            </button>
+          </div>
+          {tuningPreview && tuningPreview.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-[300px] overflow-y-auto">
+              {(tuningPreview as any[])
+                .sort((a: any, b: any) => (b.trackCount ?? 0) - (a.trackCount ?? 0))
+                .map((s: any) => (
+                <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-background/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{s.name}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-20 h-1.5 bg-muted/50 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${s.trackCount > 50 ? 'bg-green-500' : s.trackCount > 10 ? 'bg-yellow-500' : s.trackCount > 0 ? 'bg-orange-500' : 'bg-red-500'}`}
+                        style={{ width: `${Math.min(100, (s.trackCount / Math.max(1, ...(tuningPreview as any[]).map((x: any) => x.trackCount ?? 0))) * 100)}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-mono w-12 text-right ${s.trackCount === 0 ? 'text-red-400' : s.trackCount < 10 ? 'text-orange-400' : 'text-foreground'}`}>
+                      {s.trackCount?.toLocaleString?.() ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : tuningPreview && tuningPreview.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No stations found. Add stations below.</p>
+          ) : null}
+        </div>
+      </motion.div>
+
       {/* Station Management */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-8">
         <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
@@ -756,6 +893,7 @@ export default function SettingsView({
                     <p className="text-sm font-medium truncate">{s.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
                       {s.stationType === 'hits' ? 'Hits' : s.stationType === 'most-played' ? 'Most Played' : `${s.decade ?? ''} ${s.genre ?? ''}`.trim()}
+                      {' '}<span className={`${(s.trackCount ?? 0) === 0 ? 'text-red-400' : 'text-muted-foreground'}`}>({s.trackCount ?? 0} tracks)</span>
                     </p>
                   </div>
                   <button onClick={() => handleRemoveStation(s.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100" title="Remove station">

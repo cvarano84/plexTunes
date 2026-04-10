@@ -50,7 +50,7 @@ export function getDecadeFromYear(year: number | null | undefined): string | nul
 }
 
 // Map Plex genres to our station genres
-const GENRE_MAP: Record<string, string[]> = {
+export const GENRE_MAP: Record<string, string[]> = {
   'Rock': ['Rock', 'Alternative', 'Indie Rock', 'Hard Rock', 'Classic Rock', 'Punk', 'Metal', 'Grunge', 'Progressive Rock'],
   'Pop': ['Pop', 'Synthpop', 'Indie Pop', 'Electropop', 'Teen Pop', 'Power Pop', 'Art Pop'],
   'Dance': ['Dance', 'Electronic', 'EDM', 'House', 'Techno', 'Trance', 'Disco', 'Funk', 'Club'],
@@ -61,11 +61,13 @@ const GENRE_MAP: Record<string, string[]> = {
   'Soul': ['Soul', 'Motown', 'Funk', 'Blues'],
 };
 
-export function mapGenreToStation(plexGenre: string | null | undefined): string[] {
-  if (!plexGenre) return [];
+export function mapGenreToStation(plexGenre: string | null | undefined, albumGenre?: string | null): string[] {
+  // Try track genre first, then fall back to album genre
+  const genreToCheck = plexGenre || albumGenre;
+  if (!genreToCheck) return [];
   const results: string[] = [];
   for (const [stationGenre, plexGenres] of Object.entries(GENRE_MAP)) {
-    if (plexGenres?.some?.((g: string) => plexGenre?.toLowerCase?.()?.includes?.(g?.toLowerCase?.() ?? '') ?? false)) {
+    if (plexGenres?.some?.((g: string) => genreToCheck?.toLowerCase?.()?.includes?.(g?.toLowerCase?.() ?? '') ?? false)) {
       results.push(stationGenre);
     }
   }

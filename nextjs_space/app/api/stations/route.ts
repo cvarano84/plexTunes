@@ -21,12 +21,11 @@ export async function GET() {
       orderBy: [{ decade: 'asc' }, { genre: 'asc' }],
     });
 
-    // Pre-fetch a pool of distinct album art thumbs in ONE query for all standard/hits stations
-    // This avoids N+1 queries (one per station) each fetching 2000 tracks
+    // Pre-fetch a pool of tracks for art collage generation (lightweight)
     const allTracksWithArt = await prisma.cachedTrack.findMany({
       where: { thumb: { not: null } },
       select: { thumb: true, artistName: true, year: true, genre: true, popularity: true, playCount: true,
-        album: { select: { thumb: true } } },
+        album: { select: { thumb: true, genre: true } } },
       take: 5000,
     });
 
@@ -34,7 +33,7 @@ export async function GET() {
       try {
         const stationType = station.stationType ?? 'standard';
 
-        // Filter tracks for this station from the pre-fetched pool
+        // Filter tracks for art collage from the pre-fetched pool
         let filtered = allTracksWithArt;
         if (stationType === 'most-played') {
           filtered = allTracksWithArt.filter(t => (t.playCount ?? 0) > 0);
@@ -42,13 +41,13 @@ export async function GET() {
           filtered = allTracksWithArt.filter(t => {
             if (station.minPopularity > 0 && (t.popularity ?? 0) < station.minPopularity) return false;
             if (station.decade && getDecadeFromYear(t.year) !== station.decade) return false;
-            if (station.genre && !mapGenreToStation(t.genre).includes(station.genre)) return false;
+            if (station.genre && !mapGenreToStation(t.genre, t.album?.genre).includes(station.genre)) return false;
             return true;
           });
         } else {
           filtered = allTracksWithArt.filter(t => {
             if (station.decade && getDecadeFromYear(t.year) !== station.decade) return false;
-            if (station.genre && !mapGenreToStation(t.genre).includes(station.genre)) return false;
+            if (station.genre && !mapGenreToStation(t.genre, t.album?.genre).includes(station.genre)) return false;
             return true;
           });
         }
@@ -79,7 +78,8 @@ export async function GET() {
           }
         }
 
-        return { ...station, sampleArt: Array.from(thumbSet), trackCount: filtered.length };
+        // Use stored trackCount from DB (updated by rescan), not the 5000-sample count
+        return { ...station, sampleArt: Array.from(thumbSet), trackCount: station.trackCount ?? filtered.length };
       } catch {
         return { ...station, sampleArt: [] };
       }
