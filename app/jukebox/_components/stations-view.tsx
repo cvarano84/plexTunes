@@ -43,10 +43,9 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
       whileTap={{ scale: 0.97 }}
       onClick={onPlay}
       disabled={isPlaying}
-      className="flex-shrink-0 w-[220px] group relative"
+      className="flex-shrink-0 w-[200px] group relative"
     >
-      {/* Album art mosaic */}
-      <div className={`relative w-[220px] h-[220px] rounded-xl overflow-hidden bg-gradient-to-br ${DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted'}`}>
+      <div className={`relative w-[200px] h-[200px] rounded-xl overflow-hidden bg-gradient-to-br ${DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted'}`}>
         {sampleArt.length >= 4 ? (
           <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
             {sampleArt.slice(0, 4).map((thumb: string, i: number) => (
@@ -64,9 +63,7 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
             <Music2 className="w-16 h-16 text-muted-foreground/30" />
           </div>
         )}
-        {/* Overlay gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        {/* Play button overlay */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-14 h-14 rounded-full bg-primary/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
             {isPlaying ? (
@@ -76,7 +73,6 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
             )}
           </div>
         </div>
-        {/* Station label */}
         <div className="absolute bottom-0 left-0 right-0 p-3">
           <h4 className="font-display font-bold text-base text-white leading-tight">
             {decadeLabel} {genreLabel}
@@ -88,69 +84,14 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
   );
 }
 
-function HorizontalScroller({ children, label }: { children: React.ReactNode; label: string }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
-
-  const checkScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 10);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
-  };
-
-  const scroll = (dir: 'left' | 'right') => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -460 : 460, behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    checkScroll();
-    el.addEventListener('scroll', checkScroll, { passive: true });
-    return () => el.removeEventListener('scroll', checkScroll);
-  }, []);
-
-  return (
-    <div className="mb-8">
-      <div className="flex items-center justify-between mb-3 px-1">
-        <h3 className="text-xl font-display font-bold text-foreground">{label}</h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => scroll('left')}
-            disabled={!canScrollLeft}
-            className="w-8 h-8 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => scroll('right')}
-            disabled={!canScrollRight}
-            className="w-8 h-8 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-      <div
-        ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-none pb-2 scroll-smooth"
-        style={{ scrollSnapType: 'x mandatory' }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export default function StationsView({ onNavigate }: StationsViewProps) {
   const [stations, setStations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
   const { playQueue, setCurrentStationId } = usePlayer();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
 
   useEffect(() => {
     fetch('/api/stations')
@@ -161,6 +102,32 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 10);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [stations]);
+
+  const scroll = (dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === 'left' ? -600 : 600, behavior: 'smooth' });
+  };
 
   const handlePlayStation = async (station: any) => {
     const stationId = station?.id ?? '';
@@ -183,7 +150,6 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
         playQueue(tracks);
         setCurrentStationId(stationId);
         toast.success(`Playing ${station?.name ?? 'Station'}`);
-        // Navigate to now playing after starting station
         setTimeout(() => onNavigate('now-playing'), 500);
       } else {
         toast.error('No tracks available for this station');
@@ -213,38 +179,48 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
     );
   }
 
-  // Group by decade
-  const grouped = (stations ?? []).reduce((acc: Record<string, any[]>, s: any) => {
-    const decade = s?.decade ?? 'Other';
-    if (!acc[decade]) acc[decade] = [];
-    acc[decade].push(s);
-    return acc;
-  }, {} as Record<string, any[]>);
-
-  const decades = Object.keys(grouped).sort();
-
   return (
-    <div className="px-6 py-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-display font-bold tracking-tight flex items-center gap-3">
-          <Radio className="w-6 h-6 text-primary" />
-          Smart Stations
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">Auto-generated from your library • Swipe to browse</p>
+    <div className="px-6 py-6 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-2xl font-display font-bold tracking-tight flex items-center gap-3">
+            <Radio className="w-6 h-6 text-primary" />
+            Smart Stations
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1">Auto-generated from your library -- Swipe to browse</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => scroll('left')}
+            disabled={!canScrollLeft}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => scroll('right')}
+            disabled={!canScrollRight}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
-      {decades.map((decade: string) => (
-        <HorizontalScroller key={decade} label={DECADE_LABELS[decade] ?? decade}>
-          {(grouped[decade] ?? []).map((station: any) => (
-            <StationCard
-              key={station?.id}
-              station={station}
-              onPlay={() => handlePlayStation(station)}
-              isPlaying={playingStation === station?.id}
-            />
-          ))}
-        </HorizontalScroller>
-      ))}
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto scrollbar-none scroll-smooth flex-1 items-start"
+        style={{ scrollSnapType: 'x mandatory' }}
+      >
+        {stations.map((station: any) => (
+          <StationCard
+            key={station?.id}
+            station={station}
+            onPlay={() => handlePlayStation(station)}
+            isPlaying={playingStation === station?.id}
+          />
+        ))}
+      </div>
     </div>
   );
 }

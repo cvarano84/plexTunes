@@ -6,10 +6,8 @@ import { testGeniusConnection } from '@/lib/genius';
 
 export async function GET() {
   try {
-    // Get Plex config
     const plexConfig = await prisma.plexConfig.findUnique({ where: { id: 'default' } });
-    
-    // Get library stats
+
     const [artistCount, albumCount, trackCount, stationCount] = await Promise.all([
       prisma.cachedArtist.count(),
       prisma.cachedAlbum.count(),
@@ -17,18 +15,33 @@ export async function GET() {
       prisma.station.count({ where: { isActive: true } }),
     ]);
 
-    // Get sync status
     const syncStatus = await prisma.librarySyncStatus.findUnique({ where: { id: 'default' } });
-
-    // Test Genius
     const geniusStatus = await testGeniusConnection();
 
-    // Spotify config
-    const spotifyConfigured = !!(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
+    const spotifyClientId = process.env.SPOTIFY_CLIENT_ID ?? '';
+    const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET ?? '';
+    const spotifyConfigured = !!(spotifyClientId && spotifyClientSecret);
 
-    // Tracks with popularity
+    // Check Spotify token works
+    let spotifyWorking = false;
+    if (spotifyConfigured) {
+      try {
+        const basic = Buffer.from(`${spotifyClientId}:${spotifyClientSecret}`).toString('base64');
+        const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${basic}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: 'grant_type=client_credentials',
+        });
+        spotifyWorking = tokenRes.ok;
+      } catch { /* ignore */ }
+    }
+
     const tracksWithPop = await prisma.cachedTrack.count({ where: { spotifyChecked: true } });
     const tracksWithHighPop = await prisma.cachedTrack.count({ where: { popularity: { gte: 30 } } });
+    const tracksUnchecked = await prisma.cachedTrack.count({ where: { spotifyChecked: false } });
 
     return NextResponse.json({
       plex: {
@@ -46,28 +59,14 @@ export async function GET() {
       genius: geniusStatus,
       spotify: {
         configured: spotifyConfigured,
+        working: spotifyWorking,
         tracksChecked: tracksWithPop,
         tracksPopular: tracksWithHighPop,
+        tracksUnchecked: tracksUnchecked,
       },
     });
   } catch (e: any) {
     console.error('Settings error:', e?.message);
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { action } = body;
-
-    if (action === 'resync') {
-      // Trigger a resync
-      return NextResponse.json({ message: 'Use /api/plex/sync to resync' });
-    }
-
-    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message }, { status: 500 });
   }
 }

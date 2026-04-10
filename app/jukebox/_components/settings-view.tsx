@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Music2, Radio, RefreshCw, Database } from 'lucide-react';
+import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SettingsViewProps {
@@ -11,6 +11,12 @@ interface SettingsViewProps {
   onEqBandsChange: (val: number) => void;
   eqColorScheme: string;
   onEqColorSchemeChange: (val: string) => void;
+  previousTrackCount: number;
+  onPreviousTrackCountChange: (val: number) => void;
+  keyboardSize: 'small' | 'medium' | 'large';
+  onKeyboardSizeChange: (val: 'small' | 'medium' | 'large') => void;
+  columnLayout: string;
+  onColumnLayoutChange: (val: string) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -35,10 +41,15 @@ export default function SettingsView({
   idleTimeout, onIdleTimeoutChange,
   eqBands, onEqBandsChange,
   eqColorScheme, onEqColorSchemeChange,
+  previousTrackCount, onPreviousTrackCountChange,
+  keyboardSize, onKeyboardSizeChange,
+  columnLayout, onColumnLayoutChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [resyncing, setResyncing] = useState(false);
+  const [popularityRunning, setPopularityRunning] = useState(false);
+  const [popularityProgress, setPopularityProgress] = useState('');
 
   const fetchDiagnostics = () => {
     setLoading(true);
@@ -56,7 +67,6 @@ export default function SettingsView({
   const handleResync = async () => {
     setResyncing(true);
     try {
-      // Get the library section
       const libRes = await fetch('/api/plex/library');
       const libData = await libRes.json();
       const sections = libData?.sections ?? [];
@@ -66,11 +76,43 @@ export default function SettingsView({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sectionId: sections[0].key }),
         });
-        // Wait a bit then refresh diagnostics
         setTimeout(fetchDiagnostics, 2000);
       }
     } catch { /* ignore */ }
     setResyncing(false);
+  };
+
+  const handleRunPopularity = async () => {
+    setPopularityRunning(true);
+    setPopularityProgress('Starting...');
+    try {
+      let done = false;
+      let totalProcessed = 0;
+      while (!done) {
+        const res = await fetch('/api/popularity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchSize: 50 }),
+        });
+        const data = await res.json();
+        if (data?.error) {
+          setPopularityProgress(`Error: ${data.error}`);
+          break;
+        }
+        totalProcessed += data?.processed ?? 0;
+        done = data?.done ?? false;
+        const remaining = data?.remaining ?? 0;
+        setPopularityProgress(`Processed ${totalProcessed} tracks, ${remaining} remaining...`);
+        if (!done) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      setPopularityProgress(`Done! ${totalProcessed} tracks checked.`);
+      setTimeout(fetchDiagnostics, 1000);
+    } catch (e: any) {
+      setPopularityProgress(`Error: ${e?.message ?? 'Failed'}`);
+    }
+    setPopularityRunning(false);
   };
 
   const testLyrics = async () => {
@@ -79,11 +121,11 @@ export default function SettingsView({
       const data = await res.json();
       alert(
         data.lyrics
-          ? `✅ Lyrics working! Found ${data.lyrics.length} chars for Bohemian Rhapsody.\n\nDebug: ${JSON.stringify(data.debug, null, 2)}`
-          : `❌ Lyrics not working.\n\nDebug: ${JSON.stringify(data.debug ?? data, null, 2)}`
+          ? `Lyrics working! Found ${data.lyrics.length} chars for Bohemian Rhapsody.\n\nDebug: ${JSON.stringify(data.debug, null, 2)}`
+          : `Lyrics not working.\n\nDebug: ${JSON.stringify(data.debug ?? data, null, 2)}`
       );
     } catch (e: any) {
-      alert(`❌ Lyrics test failed: ${e?.message}`);
+      alert(`Lyrics test failed: ${e?.message}`);
     }
   };
 
@@ -118,9 +160,11 @@ export default function SettingsView({
             detail={diagnostics?.genius?.error ?? (diagnostics?.genius?.connected ? 'Connected' : 'Checking...')}
           />
           <StatusBadge
-            ok={diagnostics ? diagnostics.spotify?.configured : null}
+            ok={diagnostics ? diagnostics.spotify?.working : null}
             label="Spotify Popularity"
-            detail={diagnostics?.spotify ? `${diagnostics.spotify.tracksChecked} checked, ${diagnostics.spotify.tracksPopular} popular` : 'Checking...'}
+            detail={diagnostics?.spotify
+              ? `${diagnostics.spotify.tracksChecked} checked, ${diagnostics.spotify.tracksPopular} popular${diagnostics.spotify.tracksUnchecked ? ` (${diagnostics.spotify.tracksUnchecked} unchecked)` : ''}`
+              : 'Checking...'}
           />
           <StatusBadge
             ok={diagnostics ? (diagnostics.library?.tracks > 0) : null}
@@ -129,7 +173,7 @@ export default function SettingsView({
           />
         </div>
 
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-3 flex-wrap">
           <button
             onClick={testLyrics}
             className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
@@ -144,7 +188,18 @@ export default function SettingsView({
             {resyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
             Resync Library
           </button>
+          <button
+            onClick={handleRunPopularity}
+            disabled={popularityRunning}
+            className="px-4 py-2 text-xs rounded-lg bg-secondary hover:bg-secondary/80 transition-colors flex items-center gap-1"
+          >
+            {popularityRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />}
+            Run Popularity Check
+          </button>
         </div>
+        {popularityProgress && (
+          <p className="text-xs text-muted-foreground mt-2">{popularityProgress}</p>
+        )}
       </motion.div>
 
       {/* Library Stats */}
@@ -156,10 +211,10 @@ export default function SettingsView({
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'Artists', value: diagnostics.library.artists, icon: '👤' },
-              { label: 'Albums', value: diagnostics.library.albums, icon: '💿' },
-              { label: 'Tracks', value: diagnostics.library.tracks, icon: '🎵' },
-              { label: 'Stations', value: diagnostics.library.stations, icon: '📻' },
+              { label: 'Artists', value: diagnostics.library.artists },
+              { label: 'Albums', value: diagnostics.library.albums },
+              { label: 'Tracks', value: diagnostics.library.tracks },
+              { label: 'Stations', value: diagnostics.library.stations },
             ].map((stat) => (
               <div key={stat.label} className="p-3 rounded-lg bg-secondary/40 border border-border/20 text-center">
                 <p className="text-2xl font-bold font-display">{stat.value?.toLocaleString?.() ?? 0}</p>
@@ -177,7 +232,7 @@ export default function SettingsView({
           {/* Idle timeout */}
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Auto-switch to Now Playing</label>
-            <p className="text-xs text-muted-foreground mb-2">Automatically show Now Playing after idle or station selection</p>
+            <p className="text-xs text-muted-foreground mb-2">Automatically show Now Playing after idle</p>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -191,6 +246,50 @@ export default function SettingsView({
               <span className="text-sm font-mono w-16 text-right">
                 {idleTimeout === 0 ? 'Off' : `${idleTimeout}s`}
               </span>
+            </div>
+          </div>
+
+          {/* Now Playing column layout */}
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Now Playing Layout</label>
+            <p className="text-xs text-muted-foreground mb-2">Column size distribution for the Now Playing view</p>
+            <div className="flex gap-2 mt-2">
+              {[
+                { id: 'balanced', label: 'Balanced', desc: '30 / 40 / 30' },
+                { id: 'lyrics', label: 'Lyrics Focus', desc: '25 / 50 / 25' },
+                { id: 'art', label: 'Art Focus', desc: '40 / 35 / 25' },
+              ].map((layout) => (
+                <button
+                  key={layout.id}
+                  onClick={() => onColumnLayoutChange(layout.id)}
+                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+                    columnLayout === layout.id
+                      ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                      : 'bg-secondary hover:bg-secondary/80'
+                  }`}
+                >
+                  {layout.label}
+                  <p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Previous tracks count */}
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Previous Tracks in Queue</label>
+            <p className="text-xs text-muted-foreground mb-2">Number of previously played tracks to show in the queue</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="0"
+                max="20"
+                step="1"
+                value={previousTrackCount}
+                onChange={(e) => onPreviousTrackCountChange(parseInt(e.target.value))}
+                className="flex-1 h-2 accent-primary"
+              />
+              <span className="text-sm font-mono w-10 text-right">{previousTrackCount}</span>
             </div>
           </div>
 
@@ -233,6 +332,31 @@ export default function SettingsView({
                 >
                   <div className={`w-12 h-2 rounded-full bg-gradient-to-r ${scheme.colors} mb-1`} />
                   {scheme.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Keyboard size */}
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Touch Keyboard Size</label>
+            <p className="text-xs text-muted-foreground mb-2">Adjust key size for the on-screen keyboard</p>
+            <div className="flex gap-2 mt-2">
+              {[
+                { id: 'small' as const, label: 'Small' },
+                { id: 'medium' as const, label: 'Medium' },
+                { id: 'large' as const, label: 'Large' },
+              ].map((sz) => (
+                <button
+                  key={sz.id}
+                  onClick={() => onKeyboardSizeChange(sz.id)}
+                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+                    keyboardSize === sz.id
+                      ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                      : 'bg-secondary hover:bg-secondary/80'
+                  }`}
+                >
+                  {sz.label}
                 </button>
               ))}
             </div>

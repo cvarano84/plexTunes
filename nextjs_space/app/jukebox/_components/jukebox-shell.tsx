@@ -31,6 +31,9 @@ function JukeboxInner() {
   const [idleTimeout, setIdleTimeout] = useState(30);
   const [eqBands, setEqBands] = useState(32);
   const [eqColorScheme, setEqColorScheme] = useState('classic');
+  const [previousTrackCount, setPreviousTrackCount] = useState(5);
+  const [keyboardSize, setKeyboardSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [columnLayout, setColumnLayout] = useState('balanced');
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -49,6 +52,9 @@ function JukeboxInner() {
         if (s.idleTimeout !== undefined) setIdleTimeout(s.idleTimeout);
         if (s.eqBands !== undefined) setEqBands(s.eqBands);
         if (s.eqColorScheme !== undefined) setEqColorScheme(s.eqColorScheme);
+        if (s.previousTrackCount !== undefined) setPreviousTrackCount(s.previousTrackCount);
+        if (s.keyboardSize !== undefined) setKeyboardSize(s.keyboardSize);
+        if (s.columnLayout !== undefined) setColumnLayout(s.columnLayout);
       }
     } catch { /* ignore */ }
   }, []);
@@ -56,9 +62,11 @@ function JukeboxInner() {
   // Save settings to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('jukebox-settings', JSON.stringify({ idleTimeout, eqBands, eqColorScheme }));
+      localStorage.setItem('jukebox-settings', JSON.stringify({
+        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout
+      }));
     } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -145,12 +153,19 @@ function JukeboxInner() {
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
       <main className={`flex-1 overflow-y-auto ${view === 'now-playing' ? '' : 'pb-32'}`}
-        style={view === 'now-playing' ? { paddingBottom: 0 } : undefined}
+        style={view === 'now-playing' ? { paddingBottom: 0, overflow: 'hidden' } : undefined}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
-        {view === 'now-playing' && <NowPlayingView />}
+        {view === 'now-playing' && (
+          <NowPlayingView
+            eqBands={eqBands}
+            eqColorScheme={eqColorScheme}
+            previousTrackCount={previousTrackCount}
+            columnLayout={columnLayout}
+          />
+        )}
         {view === 'artist-detail' && (
           <ArtistDetailView
             artistId={selectedArtistId}
@@ -174,6 +189,12 @@ function JukeboxInner() {
             onEqBandsChange={setEqBands}
             eqColorScheme={eqColorScheme}
             onEqColorSchemeChange={setEqColorScheme}
+            previousTrackCount={previousTrackCount}
+            onPreviousTrackCountChange={setPreviousTrackCount}
+            keyboardSize={keyboardSize}
+            onKeyboardSizeChange={setKeyboardSize}
+            columnLayout={columnLayout}
+            onColumnLayoutChange={setColumnLayout}
           />
         )}
       </main>
@@ -184,6 +205,7 @@ function JukeboxInner() {
         visible={keyboardVisible}
         onClose={() => setKeyboardVisible(false)}
         targetRef={activeInputRef}
+        size={keyboardSize}
       />
     </div>
   );

@@ -1,6 +1,51 @@
-// Genius API for lyrics
+// Genius API for lyrics - uses client_credentials OAuth flow
 
 const GENIUS_BASE = 'https://api.genius.com';
+const GENIUS_TOKEN_URL = 'https://api.genius.com/oauth/token';
+
+let cachedGeniusToken: string | null = null;
+let geniusTokenExpiry: number = 0;
+
+async function getGeniusToken(): Promise<string> {
+  // If we have a cached token that's still valid, use it
+  if (cachedGeniusToken && Date.now() < geniusTokenExpiry) {
+    return cachedGeniusToken;
+  }
+
+  // Try client_credentials flow first (preferred)
+  const clientId = process.env.GENIUS_CLIENT_ID ?? '';
+  const clientSecret = process.env.GENIUS_CLIENT_SECRET ?? '';
+
+  if (clientId && clientSecret) {
+    try {
+      const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const res = await fetch(GENIUS_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${basic}`,
+        },
+        body: 'grant_type=client_credentials',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        cachedGeniusToken = data?.access_token ?? '';
+        // Cache for 50 minutes (tokens usually last 1 hour)
+        geniusTokenExpiry = Date.now() + 50 * 60 * 1000;
+        return cachedGeniusToken ?? '';
+      }
+      console.error('Genius client_credentials failed:', res.status);
+    } catch (e: any) {
+      console.error('Genius token fetch error:', e?.message);
+    }
+  }
+
+  // Fallback to static access token
+  const staticToken = process.env.GENIUS_ACCESS_TOKEN ?? '';
+  if (staticToken) return staticToken;
+
+  return '';
+}
 
 export interface GeniusSearchResult {
   song: any | null;
@@ -11,9 +56,9 @@ export interface GeniusSearchResult {
 
 export async function searchGeniusSong(title: string, artist: string): Promise<GeniusSearchResult> {
   try {
-    const token = process.env.GENIUS_ACCESS_TOKEN ?? '';
+    const token = await getGeniusToken();
     if (!token) {
-      return { song: null, searchWorked: false, tokenValid: false, error: 'GENIUS_ACCESS_TOKEN not set' };
+      return { song: null, searchWorked: false, tokenValid: false, error: 'No Genius credentials configured (need GENIUS_CLIENT_ID + GENIUS_CLIENT_SECRET)' };
     }
 
     // Clean up title - remove feat., remaster notes, etc.
@@ -22,6 +67,8 @@ export async function searchGeniusSong(title: string, artist: string): Promise<G
       .replace(/\s*\[.*?\]/gi, '')
       .replace(/\s*-\s*remaster(ed)?/gi, '')
       .replace(/\s*\(remaster(ed)?\)/gi, '')
+      .replace(/\s*\(live\)/gi, '')
+      .replace(/\s*\(bonus track\)/gi, '')
       .trim();
 
     const query = encodeURIComponent(`${cleanTitle} ${artist}`);
@@ -30,7 +77,10 @@ export async function searchGeniusSong(title: string, artist: string): Promise<G
     });
 
     if (res?.status === 401 || res?.status === 403) {
-      return { song: null, searchWorked: true, tokenValid: false, error: `Genius API returned ${res.status} - token may be invalid` };
+      // Invalidate cached token
+      cachedGeniusToken = null;
+      geniusTokenExpiry = 0;
+      return { song: null, searchWorked: true, tokenValid: false, error: `Genius API returned ${res.status} - credentials may be invalid` };
     }
 
     if (!res?.ok) {
@@ -39,18 +89,17 @@ export async function searchGeniusSong(title: string, artist: string): Promise<G
 
     const data = await res?.json?.();
     const hits = data?.response?.hits ?? [];
-    
+
     if (hits?.length > 0) {
-      // Try to find best match - prefer results that match artist
       const artistLower = artist.toLowerCase();
-      const bestMatch = hits.find((h: any) => 
+      const bestMatch = hits.find((h: any) =>
         h?.result?.primary_artist?.name?.toLowerCase?.()?.includes?.(artistLower) ||
         artistLower.includes(h?.result?.primary_artist?.name?.toLowerCase?.() ?? '')
       );
-      return { 
-        song: bestMatch?.result ?? hits[0]?.result ?? null, 
-        searchWorked: true, 
-        tokenValid: true 
+      return {
+        song: bestMatch?.result ?? hits[0]?.result ?? null,
+        searchWorked: true,
+        tokenValid: true
       };
     }
     return { song: null, searchWorked: true, tokenValid: true, error: 'No results found on Genius' };
@@ -73,13 +122,12 @@ export async function fetchLyricsFromGenius(songUrl: string): Promise<{ lyrics: 
     }
 
     const html = await res?.text?.() ?? '';
-    
+
     // Method 1: data-lyrics-container attribute
-    const lyricsMatch = html?.match?.(/data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g);
+    const lyricsMatch = html?.match?.(/data-lyrics-container="true"[^>]*>[\s\S]*?<\/div>/g);
     if (lyricsMatch && lyricsMatch.length > 0) {
       let lyrics = lyricsMatch
         .map((m: string) => {
-          // Remove the opening tag
           let content = m.replace(/^data-lyrics-container="true"[^>]*>/, '').replace(/<\/div>$/, '');
           content = content.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
           return content;
@@ -89,8 +137,8 @@ export async function fetchLyricsFromGenius(songUrl: string): Promise<{ lyrics: 
       if (lyrics.trim()) return { lyrics: lyrics.trim() };
     }
 
-    // Method 2: Look for Lyrics__Container class
-    const containerMatch = html?.match?.(/class="Lyrics__Container[^"]*"[^>]*>([\s\S]*?)<\/div>/g);
+    // Method 2: Lyrics__Container class
+    const containerMatch = html?.match?.(/class="Lyrics__Container[^"]*"[^>]*>[\s\S]*?<\/div>/g);
     if (containerMatch && containerMatch.length > 0) {
       let lyrics = containerMatch
         .map((m: string) => m.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''))
@@ -135,22 +183,30 @@ function decodeHtmlEntities(text: string): string {
 export async function testGeniusConnection(): Promise<{
   connected: boolean;
   tokenSet: boolean;
+  authMethod: string;
   error?: string;
 }> {
-  const token = process.env.GENIUS_ACCESS_TOKEN ?? '';
-  if (!token) {
-    return { connected: false, tokenSet: false, error: 'GENIUS_ACCESS_TOKEN not configured' };
+  const hasClientCreds = !!(process.env.GENIUS_CLIENT_ID && process.env.GENIUS_CLIENT_SECRET);
+  const hasStaticToken = !!process.env.GENIUS_ACCESS_TOKEN;
+
+  if (!hasClientCreds && !hasStaticToken) {
+    return { connected: false, tokenSet: false, authMethod: 'none', error: 'No Genius credentials configured' };
   }
 
   try {
+    const token = await getGeniusToken();
+    if (!token) {
+      return { connected: false, tokenSet: true, authMethod: hasClientCreds ? 'client_credentials' : 'access_token', error: 'Failed to obtain token' };
+    }
+
     const res = await fetch(`${GENIUS_BASE}/search?q=test`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     if (res.ok) {
-      return { connected: true, tokenSet: true };
+      return { connected: true, tokenSet: true, authMethod: hasClientCreds ? 'client_credentials' : 'access_token' };
     }
-    return { connected: false, tokenSet: true, error: `API returned ${res.status}` };
+    return { connected: false, tokenSet: true, authMethod: hasClientCreds ? 'client_credentials' : 'access_token', error: `API returned ${res.status}` };
   } catch (e: any) {
-    return { connected: false, tokenSet: true, error: e?.message ?? 'Connection failed' };
+    return { connected: false, tokenSet: true, authMethod: hasClientCreds ? 'client_credentials' : 'access_token', error: e?.message ?? 'Connection failed' };
   }
 }

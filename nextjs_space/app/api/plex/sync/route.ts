@@ -236,6 +236,46 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Auto-trigger Spotify popularity check in the background
+    try {
+      const uncheckedCount = await prisma.cachedTrack.count({ where: { spotifyChecked: false } });
+      if (uncheckedCount > 0) {
+        // Fire off popularity check in background (don't await)
+        (async () => {
+          try {
+            const { getBatchPopularity } = await import('@/lib/spotify');
+            let processed = 0;
+            let done = false;
+            while (!done && processed < 5000) {
+              const unchecked = await prisma.cachedTrack.findMany({
+                where: { spotifyChecked: false },
+                take: 50,
+                select: { id: true, title: true, artistName: true },
+              });
+              if (unchecked.length === 0) { done = true; break; }
+              const trackInputs = unchecked.map((t: any) => ({
+                artistName: t?.artistName ?? '',
+                title: t?.title ?? '',
+              }));
+              const popularityMap = await getBatchPopularity(trackInputs);
+              for (const t of unchecked) {
+                const key = `${t?.artistName ?? ''}::${t?.title ?? ''}`;
+                const pop = popularityMap?.get?.(key) ?? null;
+                await prisma.cachedTrack.update({
+                  where: { id: t.id },
+                  data: { popularity: pop, spotifyChecked: true },
+                });
+              }
+              processed += unchecked.length;
+            }
+            console.log(`Auto-popularity: checked ${processed} tracks after sync`);
+          } catch (popErr: any) {
+            console.error('Auto-popularity error:', popErr?.message);
+          }
+        })();
+      }
+    } catch { /* ignore popularity trigger errors */ }
+
     return NextResponse.json({
       success: true,
       artists: artists?.length ?? 0,
