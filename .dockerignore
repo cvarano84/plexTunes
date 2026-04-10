@@ -6,3 +6,8 @@ node_modules
 .env.*
 *.log
 .DS_Store
+nextjs_space
+.deploy
+.abacus.donotdelete
+.project_instructions.md
+opt
