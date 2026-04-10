@@ -66,6 +66,8 @@ model CachedTrack {
   mediaKey        String?
   popularity      Int?
   spotifyChecked  Boolean       @default(false)
+  playCount       Int           @default(0)
+  lastPlayedAt    DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -74,6 +76,7 @@ model CachedTrack {
   @@index([genre])
   @@index([year])
   @@index([popularity])
+  @@index([playCount])
 }
 
 model Station {
@@ -85,6 +88,8 @@ model Station {
   imageUrl    String?
   trackCount  Int      @default(0)
   isActive    Boolean  @default(true)
+  stationType String   @default("standard")
+  minPopularity Int    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

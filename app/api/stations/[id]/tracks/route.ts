@@ -4,27 +4,107 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { mapGenreToStation, getDecadeFromYear } from '@/lib/stations';
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const stationId = params?.id ?? '';
     const station = await prisma.station.findUnique({ where: { id: stationId } });
-    
+
     if (!station) {
       return NextResponse.json({ error: 'Station not found' }, { status: 404 });
     }
 
-    // Get all tracks that match decade and genre
+    // Handle "most-played" station type
+    if (station.stationType === 'most-played') {
+      const topPlayed = await prisma.cachedTrack.findMany({
+        where: { playCount: { gt: 0 } },
+        orderBy: [{ playCount: 'desc' }, { lastPlayedAt: 'desc' }],
+        take: 100,
+        include: {
+          artist: { select: { name: true, thumb: true } },
+          album: { select: { title: true, thumb: true } },
+        },
+      });
+
+      // Weighted shuffle - higher play count = higher chance of appearing early
+      const weighted = topPlayed.map((t: any) => ({
+        ...t,
+        weight: (t.playCount ?? 1) + Math.random() * 5,
+      }));
+      weighted.sort((a: any, b: any) => b.weight - a.weight);
+      const selected = weighted.slice(0, 30);
+
+      return NextResponse.json({ station, tracks: selected });
+    }
+
+    // Handle "hits" station type (cross-decade and/or cross-genre)
+    if (station.stationType === 'hits') {
+      const minPop = station.minPopularity || 40;
+
+      // Build where clause
+      const where: any = {
+        popularity: { gte: minPop },
+      };
+
+      // If genre is set, we need to filter by genre mapping (can't do in SQL)
+      // If decade is set, filter by year range
+      if (station.decade) {
+        const decadeNum = parseInt(station.decade, 10);
+        if (!isNaN(decadeNum)) {
+          where.year = { gte: decadeNum, lt: decadeNum + 10 };
+        }
+      }
+
+      const tracks = await prisma.cachedTrack.findMany({
+        where,
+        orderBy: { popularity: 'desc' },
+        take: 500,
+        include: {
+          artist: { select: { name: true, thumb: true } },
+          album: { select: { title: true, thumb: true } },
+        },
+      });
+
+      // Further filter by genre if specified
+      let filtered = tracks;
+      if (station.genre) {
+        filtered = tracks.filter((t: any) => {
+          const stationGenres = mapGenreToStation(t?.genre);
+          return stationGenres.includes(station.genre ?? '');
+        });
+      }
+
+      // Sort by popularity with shuffle among similar
+      const sorted = filtered.sort((a: any, b: any) => {
+        const popA = a?.popularity ?? 0;
+        const popB = b?.popularity ?? 0;
+        if (Math.abs(popA - popB) <= 5) return Math.random() - 0.5;
+        return popB - popA;
+      });
+
+      const top = sorted.slice(0, 50);
+      const selected = shuffle(top).slice(0, 30);
+
+      return NextResponse.json({ station, tracks: selected });
+    }
+
+    // Standard station: match by decade AND genre
     const allTracks = await prisma.cachedTrack.findMany({
-      where: {
-        year: { not: null },
-      },
+      where: { year: { not: null } },
       include: {
         artist: { select: { name: true, thumb: true } },
         album: { select: { title: true, thumb: true } },
       },
     });
 
-    // Filter by station criteria
     const matchingTracks = allTracks?.filter?.((t: any) => {
       const trackDecade = getDecadeFromYear(t?.year);
       if (trackDecade !== station?.decade) return false;
@@ -32,7 +112,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return trackGenres?.includes?.(station?.genre ?? '') ?? false;
     }) ?? [];
 
-    // Sort by popularity (highest first), then shuffle within similar popularity
     const sorted = matchingTracks?.sort?.((a: any, b: any) => {
       const popA = a?.popularity ?? 0;
       const popB = b?.popularity ?? 0;
@@ -40,19 +119,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return popB - popA;
     }) ?? [];
 
-    // Take top tracks (popular ones preferred)
     const selected = sorted?.slice?.(0, 50) ?? [];
+    const shuffled = shuffle(selected).slice(0, 30);
 
-    // Shuffle the selection for variety
-    for (let i = (selected?.length ?? 0) - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [selected[i], selected[j]] = [selected[j], selected[i]];
-    }
-
-    return NextResponse.json({
-      station,
-      tracks: selected?.slice?.(0, 30) ?? [],
-    });
+    return NextResponse.json({ station, tracks: shuffled });
   } catch (e: any) {
     console.error('Station tracks error:', e?.message);
     return NextResponse.json({ error: 'Failed to fetch station tracks' }, { status: 500 });

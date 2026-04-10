@@ -223,6 +223,79 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Auto-create genre hits stations (cross-decade)
+    const HITS_STATIONS = [
+      { name: 'Country Hits', genre: 'Country', description: 'The biggest country hits across all decades' },
+      { name: 'Hip-Hop Hits', genre: 'Hip-Hop', description: 'Top hip-hop and rap tracks from every era' },
+      { name: 'Rock Hits', genre: 'Rock', description: 'The greatest rock anthems of all time' },
+      { name: 'Pop Hits', genre: 'Pop', description: 'Chart-topping pop from every decade' },
+      { name: 'R&B Hits', genre: 'R&B', description: 'The smoothest R&B jams across the years' },
+      { name: 'Dance Hits', genre: 'Dance', description: 'The hottest dance and electronic tracks' },
+    ];
+    for (const hits of HITS_STATIONS) {
+      const genreTracks = allCachedTracks.filter((t: any) => {
+        const mapped = mapGenreToStation(t?.genre);
+        return mapped.includes(hits.genre);
+      });
+      if (genreTracks.length >= 10) {
+        const existing = await prisma.station.findFirst({
+          where: { stationType: 'hits', genre: hits.genre, decade: null },
+        });
+        if (!existing) {
+          await prisma.station.create({
+            data: {
+              name: hits.name,
+              description: hits.description,
+              genre: hits.genre,
+              decade: null,
+              stationType: 'hits',
+              minPopularity: 40,
+              trackCount: genreTracks.length,
+              isActive: true,
+            },
+          });
+        } else {
+          await prisma.station.update({
+            where: { id: existing.id },
+            data: { trackCount: genreTracks.length },
+          });
+        }
+      }
+    }
+
+    // Auto-create "All the Hits" station (cross-genre, cross-decade)
+    const allHitsExisting = await prisma.station.findFirst({
+      where: { stationType: 'hits', genre: null, decade: null },
+    });
+    if (!allHitsExisting) {
+      await prisma.station.create({
+        data: {
+          name: 'All the Hits',
+          description: 'The most popular tracks from your entire library',
+          genre: null,
+          decade: null,
+          stationType: 'hits',
+          minPopularity: 50,
+          isActive: true,
+        },
+      });
+    }
+
+    // Auto-create "Most Played" station
+    const mostPlayedExisting = await prisma.station.findFirst({
+      where: { stationType: 'most-played' },
+    });
+    if (!mostPlayedExisting) {
+      await prisma.station.create({
+        data: {
+          name: 'Most Played',
+          description: 'Your personal favorites based on play history',
+          stationType: 'most-played',
+          isActive: true,
+        },
+      });
+    }
+
     await prisma.librarySyncStatus.update({
       where: { id: 'default' },
       data: {

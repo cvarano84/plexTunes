@@ -60,6 +60,7 @@ export default function SettingsView({
   // Station management state
   const [stations, setStations] = useState<any[]>([]);
   const [stationsLoading, setStationsLoading] = useState(true);
+  const [newStationType, setNewStationType] = useState<'standard' | 'hits' | 'most-played'>('standard');
   const [newStationDecade, setNewStationDecade] = useState('1980s');
   const [newStationGenre, setNewStationGenre] = useState('Rock');
   const [newStationName, setNewStationName] = useState('');
@@ -82,11 +83,28 @@ export default function SettingsView({
     if (stationSaving) return;
     setStationSaving(true);
     try {
-      const name = newStationName.trim() || `${newStationDecade} ${newStationGenre}`;
+      let payload: any = { stationType: newStationType };
+
+      if (newStationType === 'most-played') {
+        payload.name = newStationName.trim() || 'Most Played';
+        payload.description = 'Your most played tracks, shuffled';
+      } else if (newStationType === 'hits') {
+        const genrePart = newStationGenre !== 'all' ? newStationGenre : null;
+        const decadePart = newStationDecade !== 'all' ? newStationDecade : null;
+        payload.genre = genrePart;
+        payload.decade = decadePart;
+        payload.name = newStationName.trim() || `${genrePart ? genrePart + ' ' : ''}${decadePart ? decadePart + ' ' : ''}Hits`.trim() || 'All the Hits';
+        payload.minPopularity = 40;
+      } else {
+        payload.decade = newStationDecade;
+        payload.genre = newStationGenre;
+        payload.name = newStationName.trim() || `${newStationDecade} ${newStationGenre}`;
+      }
+
       const res = await fetch('/api/stations/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description: `${name} hits`, decade: newStationDecade, genre: newStationGenre }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data?.error) { alert(data.error); }
@@ -484,35 +502,69 @@ export default function SettingsView({
         {/* Add new station */}
         <div className="p-4 rounded-lg bg-secondary/40 border border-border/20 mb-3">
           <label className="text-sm font-medium">Add Station</label>
-          <p className="text-xs text-muted-foreground mb-3">Create a new smart station by choosing a decade and genre</p>
+          <p className="text-xs text-muted-foreground mb-3">Create standard, hits, or most-played stations</p>
+
+          {/* Station type selector */}
+          <div className="flex gap-2 mb-3">
+            {[
+              { id: 'standard' as const, label: 'Standard', desc: 'Decade + Genre' },
+              { id: 'hits' as const, label: 'Hits', desc: 'Top tracks across eras' },
+              { id: 'most-played' as const, label: 'Most Played', desc: 'Your favorites' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setNewStationType(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  newStationType === t.id
+                    ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                    : 'bg-secondary hover:bg-secondary/80'
+                }`}
+              >
+                {t.label}
+                <p className="text-[10px] opacity-70 mt-0.5">{t.desc}</p>
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-end gap-2 flex-wrap">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Decade</label>
-              <select
-                value={newStationDecade}
-                onChange={(e) => setNewStationDecade(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
-              >
-                {DECADES.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Genre</label>
-              <select
-                value={newStationGenre}
-                onChange={(e) => setNewStationGenre(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
-              >
-                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
+            {newStationType !== 'most-played' && (
+              <>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Decade</label>
+                  <select
+                    value={newStationDecade}
+                    onChange={(e) => setNewStationDecade(e.target.value)}
+                    className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                  >
+                    {newStationType === 'hits' && <option value="all">All Decades</option>}
+                    {DECADES.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Genre</label>
+                  <select
+                    value={newStationGenre}
+                    onChange={(e) => setNewStationGenre(e.target.value)}
+                    className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                  >
+                    {newStationType === 'hits' && <option value="all">All Genres</option>}
+                    {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
             <div className="flex-1 min-w-[150px]">
               <label className="text-xs text-muted-foreground block mb-1">Custom Name (optional)</label>
               <input
                 type="text"
                 value={newStationName}
                 onChange={(e) => setNewStationName(e.target.value)}
-                placeholder={`${newStationDecade} ${newStationGenre}`}
+                placeholder={
+                  newStationType === 'most-played' ? 'Most Played'
+                    : newStationType === 'hits'
+                      ? `${newStationGenre !== 'all' ? newStationGenre + ' ' : ''}Hits`
+                      : `${newStationDecade} ${newStationGenre}`
+                }
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
               />
             </div>

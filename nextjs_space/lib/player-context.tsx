@@ -218,6 +218,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Track play counts - record after 30s of playback
+  const playRecordedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentTrack?.id) return;
+    // Reset when track changes
+    playRecordedRef.current = null;
+  }, [currentTrack?.id]);
+
+  useEffect(() => {
+    if (!currentTrack?.id || !isPlaying) return;
+    if (playRecordedRef.current === currentTrack.id) return;
+    if (currentTime >= 30) {
+      playRecordedRef.current = currentTrack.id;
+      fetch('/api/tracks/play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId: currentTrack.id }),
+      }).catch(() => {});
+    }
+  }, [currentTrack?.id, currentTime, isPlaying]);
+
   useEffect(() => {
     const audio = audioRef?.current;
     if (!audio) return;

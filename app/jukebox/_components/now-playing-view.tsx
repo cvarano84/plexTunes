@@ -139,9 +139,30 @@ const LYRICS_ZOOM_LEVELS: Record<number, { active: string; inactive: string; lin
   5: { active: 'clamp(2.25rem,4vw,4rem)', inactive: 'clamp(1.5rem,2.8vw,2.5rem)', lineHeight: '1.3', gap: '1.25rem' },
 };
 
-// Smooth-scrolling lyrics component
-function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
+// Parse LRC format timestamps: [mm:ss.xx] text -> { time: seconds, text: string }
+interface TimedLine { time: number; text: string; }
+function parseLRC(lrc: string): TimedLine[] {
+  const lines: TimedLine[] = [];
+  for (const raw of lrc.split('\n')) {
+    const match = raw.match(/^\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)$/);
+    if (match) {
+      const mins = parseInt(match[1], 10);
+      const secs = parseInt(match[2], 10);
+      const ms = match[3] ? parseInt(match[3].padEnd(3, '0'), 10) : 0;
+      const time = mins * 60 + secs + ms / 1000;
+      const text = match[4]?.trim() ?? '';
+      if (text.length > 0) {
+        lines.push({ time, text });
+      }
+    }
+  }
+  return lines.sort((a, b) => a.time - b.time);
+}
+
+// Smooth-scrolling lyrics component - supports both synced (LRC) and plain lyrics
+function KaraokeLyrics({ lyrics, syncedLyrics, currentTime, duration, zoom = 3 }: {
   lyrics: string | null;
+  syncedLyrics: string | null;
   currentTime: number;
   duration: number;
   zoom?: number;
@@ -151,26 +172,50 @@ function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
   const [activeLineIdx, setActiveLineIdx] = useState(0);
   const lastScrollTime = useRef(0);
 
-  const allLines = useMemo(() => {
-    if (!lyrics) return [];
-    return lyrics.split('\n').filter(line => line.trim().length > 0);
-  }, [lyrics]);
+  // Parse synced lyrics if available, otherwise split plain lyrics
+  const timedLines = useMemo<TimedLine[]>(() => {
+    if (syncedLyrics) {
+      const parsed = parseLRC(syncedLyrics);
+      if (parsed.length > 0) return parsed;
+    }
+    // Fall back to plain lyrics with estimated timing
+    if (lyrics) {
+      const lines = lyrics.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length > 0 && duration > 0) {
+        const interval = duration / lines.length;
+        return lines.map((text, i) => ({ time: i * interval, text }));
+      }
+      return lines.map((text, i) => ({ time: i, text }));
+    }
+    return [];
+  }, [syncedLyrics, lyrics, duration]);
+
+  const hasSyncedTiming = useMemo(() => {
+    if (!syncedLyrics) return false;
+    return parseLRC(syncedLyrics).length > 0;
+  }, [syncedLyrics]);
 
   // Reset refs when lines change
   useEffect(() => {
-    lineRefs.current = new Array(allLines.length).fill(null);
-  }, [allLines.length]);
+    lineRefs.current = new Array(timedLines.length).fill(null);
+  }, [timedLines.length]);
 
-  // Track active line based on playback progress
+  // Track active line based on actual timestamps (synced) or estimation (plain)
   useEffect(() => {
-    if (allLines.length === 0 || duration <= 0) {
+    if (timedLines.length === 0) {
       setActiveLineIdx(0);
       return;
     }
-    const progress = Math.min(1, currentTime / duration);
-    const estimatedLine = Math.floor(progress * allLines.length);
-    setActiveLineIdx(Math.max(0, Math.min(allLines.length - 1, estimatedLine)));
-  }, [currentTime, duration, allLines]);
+    // Binary search for the line at currentTime
+    let idx = 0;
+    for (let i = timedLines.length - 1; i >= 0; i--) {
+      if (currentTime >= timedLines[i].time) {
+        idx = i;
+        break;
+      }
+    }
+    setActiveLineIdx(idx);
+  }, [currentTime, timedLines]);
 
   // Smooth scroll to active line - centered in container
   useEffect(() => {
@@ -178,7 +223,6 @@ function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
     const activeLine = lineRefs.current[activeLineIdx];
     if (!container || !activeLine) return;
 
-    // Throttle scrolling to avoid jerkiness - scroll at most every 400ms
     const now = Date.now();
     if (now - lastScrollTime.current < 400) return;
     lastScrollTime.current = now;
@@ -197,7 +241,7 @@ function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
 
   const zoomConfig = LYRICS_ZOOM_LEVELS[zoom] ?? LYRICS_ZOOM_LEVELS[3];
 
-  if (!lyrics) {
+  if (timedLines.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
         <Mic2 className="w-[clamp(2rem,4vw,3.5rem)] h-[clamp(2rem,4vw,3.5rem)] text-muted-foreground/30 mb-3" />
@@ -216,38 +260,39 @@ function KaraokeLyrics({ lyrics, currentTime, duration, zoom = 3 }: {
         scrollbarWidth: 'none',
       }}
     >
-      {/* Top spacer to allow first lines to center */}
       <div style={{ height: '40%' }} />
       <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: zoomConfig.gap }}>
-        {allLines.map((line, i) => {
+        {timedLines.map((line, i) => {
           const isActive = i === activeLineIdx;
           const distance = Math.abs(i - activeLineIdx);
-          // Fade out lines farther from active
           const opacity = isActive ? 1 : Math.max(0.15, 1 - distance * 0.15);
 
           return (
             <p
-              key={`${i}-${line.slice(0, 15)}`}
+              key={`${i}-${line.text.slice(0, 15)}`}
               ref={(el) => { lineRefs.current[i] = el; }}
               className="font-display transition-all duration-700 ease-out"
               style={{
                 fontSize: isActive ? zoomConfig.active : zoomConfig.inactive,
                 lineHeight: zoomConfig.lineHeight,
                 fontWeight: isActive ? 700 : 400,
-                color: isActive
-                  ? 'var(--foreground)'
-                  : 'var(--muted-foreground)',
+                color: isActive ? 'var(--foreground)' : 'var(--muted-foreground)',
                 opacity,
                 transform: isActive ? 'scale(1.02)' : 'scale(1)',
               }}
             >
-              {line}
+              {line.text}
             </p>
           );
         })}
       </div>
-      {/* Bottom spacer to allow last lines to center */}
       <div style={{ height: '40%' }} />
+      {/* Source indicator */}
+      {hasSyncedTiming && (
+        <div className="text-center pb-2">
+          <span className="text-[clamp(0.5rem,0.7vw,0.625rem)] text-muted-foreground/30 uppercase tracking-widest">synced</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -266,25 +311,33 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
     togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode
   } = usePlayer();
   const [lyrics, setLyrics] = useState<string | null>(null);
+  const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
 
   useEffect(() => {
     if (!currentTrack?.title || !currentTrack?.artistName) {
       setLyrics(null);
+      setSyncedLyrics(null);
       return;
     }
     setLyricsLoading(true);
     setLyrics(null);
+    setSyncedLyrics(null);
     const params = new URLSearchParams({
       title: currentTrack.title,
       artist: currentTrack.artistName,
     });
+    if (currentTrack.albumTitle) params.set('album', currentTrack.albumTitle);
+    if (currentTrack.duration) params.set('duration', String(currentTrack.duration));
     fetch(`/api/lyrics?${params}`)
       .then(r => r?.json?.())
-      .then(data => setLyrics(data?.lyrics ?? null))
-      .catch(() => setLyrics(null))
+      .then(data => {
+        setLyrics(data?.lyrics ?? null);
+        setSyncedLyrics(data?.syncedLyrics ?? null);
+      })
+      .catch(() => { setLyrics(null); setSyncedLyrics(null); })
       .finally(() => setLyricsLoading(false));
-  }, [currentTrack?.title, currentTrack?.artistName]);
+  }, [currentTrack?.title, currentTrack?.artistName, currentTrack?.albumTitle, currentTrack?.duration]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -379,7 +432,7 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
                 <span className="ml-2 text-muted-foreground text-[clamp(0.875rem,1.3vw,1.125rem)]">Searching for lyrics...</span>
               </div>
             ) : (
-              <KaraokeLyrics lyrics={lyrics} currentTime={currentTime} duration={duration} zoom={lyricsZoom} />
+              <KaraokeLyrics lyrics={lyrics} syncedLyrics={syncedLyrics} currentTime={currentTime} duration={duration} zoom={lyricsZoom} />
             )}
           </div>
         </div>
