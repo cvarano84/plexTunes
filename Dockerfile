@@ -17,6 +17,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV DOCKER_BUILD=1
+ENV NEXT_OUTPUT_MODE=standalone
+ENV NEXT_DIST_DIR=.next
 
 # Fix Prisma schema for Docker
 RUN sed -i '/output.*=.*"\/home/d' prisma/schema.prisma && \
