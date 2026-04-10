@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SettingsViewProps {
@@ -54,6 +54,54 @@ export default function SettingsView({
   const [popularityRunning, setPopularityRunning] = useState(false);
   const [popularityProgress, setPopularityProgress] = useState('');
 
+  // Station management state
+  const [stations, setStations] = useState<any[]>([]);
+  const [stationsLoading, setStationsLoading] = useState(true);
+  const [newStationDecade, setNewStationDecade] = useState('1980s');
+  const [newStationGenre, setNewStationGenre] = useState('Rock');
+  const [newStationName, setNewStationName] = useState('');
+  const [stationSaving, setStationSaving] = useState(false);
+
+  const DECADES = ['1950s','1960s','1970s','1980s','1990s','2000s','2010s','2020s'];
+  const GENRES = ['Rock','Pop','Dance','Hip-Hop','R&B','Country','New Wave','Soul'];
+
+  const fetchStations = useCallback(async () => {
+    setStationsLoading(true);
+    try {
+      const res = await fetch('/api/stations');
+      const data = await res.json();
+      setStations(data?.stations ?? []);
+    } catch { setStations([]); }
+    setStationsLoading(false);
+  }, []);
+
+  const handleAddStation = async () => {
+    if (stationSaving) return;
+    setStationSaving(true);
+    try {
+      const name = newStationName.trim() || `${newStationDecade} ${newStationGenre}`;
+      const res = await fetch('/api/stations/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: `${name} hits`, decade: newStationDecade, genre: newStationGenre }),
+      });
+      const data = await res.json();
+      if (data?.error) { alert(data.error); }
+      else {
+        setNewStationName('');
+        fetchStations();
+      }
+    } catch (e: any) { alert(e?.message ?? 'Failed'); }
+    setStationSaving(false);
+  };
+
+  const handleRemoveStation = async (id: string) => {
+    try {
+      await fetch(`/api/stations/manage?id=${id}`, { method: 'DELETE' });
+      fetchStations();
+    } catch { /* ignore */ }
+  };
+
   const fetchDiagnostics = () => {
     setLoading(true);
     fetch('/api/settings')
@@ -65,7 +113,8 @@ export default function SettingsView({
 
   useEffect(() => {
     fetchDiagnostics();
-  }, []);
+    fetchStations();
+  }, [fetchStations]);
 
   const handleResync = async () => {
     setResyncing(true);
@@ -382,6 +431,95 @@ export default function SettingsView({
               ))}
             </div>
           </div>
+        </div>
+      </motion.div>
+
+      {/* Station Management */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <Radio className="w-5 h-5 text-accent" />
+          Station Management
+        </h3>
+
+        {/* Add new station */}
+        <div className="p-4 rounded-lg bg-secondary/40 border border-border/20 mb-3">
+          <label className="text-sm font-medium">Add Station</label>
+          <p className="text-xs text-muted-foreground mb-3">Create a new smart station by choosing a decade and genre</p>
+          <div className="flex items-end gap-2 flex-wrap">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Decade</label>
+              <select
+                value={newStationDecade}
+                onChange={(e) => setNewStationDecade(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
+              >
+                {DECADES.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Genre</label>
+              <select
+                value={newStationGenre}
+                onChange={(e) => setNewStationGenre(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-background border border-border text-sm"
+              >
+                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-xs text-muted-foreground block mb-1">Custom Name (optional)</label>
+              <input
+                type="text"
+                value={newStationName}
+                onChange={(e) => setNewStationName(e.target.value)}
+                placeholder={`${newStationDecade} ${newStationGenre}`}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+              />
+            </div>
+            <button
+              onClick={handleAddStation}
+              disabled={stationSaving}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm flex items-center gap-1"
+            >
+              {stationSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Add
+            </button>
+          </div>
+        </div>
+
+        {/* Active stations list */}
+        <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-sm font-medium">Active Stations ({stations.length})</label>
+            <button onClick={fetchStations} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <RefreshCw className={`w-3 h-3 ${stationsLoading ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
+          {stationsLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : stations.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No active stations. Add one above.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto">
+              {stations.map((s: any) => (
+                <div key={s.id} className="flex items-center gap-3 p-2 rounded-lg bg-background/50 border border-border/10 group">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{s.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{s.decade} &middot; {s.genre}</p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveStation(s.id)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Remove station"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </motion.div>
 

@@ -35,6 +35,7 @@ interface PlayerContextType extends PlayerState {
   setVolume: (vol: number) => void;
   setCurrentStationId: (id: string | null) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
+  analyserNode: AnalyserNode | null;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -56,8 +57,65 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [volume, setVolumeState] = useState(0.8);
   const [queueIndex, setQueueIndex] = useState(-1);
   const [currentStationId, setCurrentStationId] = useState<string | null>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fetchingMoreRef = useRef(false);
+  // Persistent Web Audio refs - survive across component mounts/unmounts
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  // Initialize Web Audio API once the audio element exists
+  // This MUST live in the provider so it persists across view changes
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || sourceNodeRef.current) return;
+
+    const initAudio = () => {
+      if (sourceNodeRef.current) return; // already initialized
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = ctx.createMediaElementSource(audio);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.7;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        audioContextRef.current = ctx;
+        sourceNodeRef.current = source;
+        setAnalyserNode(analyser);
+        // Resume context on user gesture
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      } catch (e) {
+        console.warn('Web Audio init failed:', e);
+      }
+    };
+
+    // Try immediately, and also on first user interaction
+    initAudio();
+    const handleInteraction = () => {
+      initAudio();
+      // Also resume if suspended
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    document.addEventListener('pointerdown', handleInteraction, { once: false });
+    document.addEventListener('keydown', handleInteraction, { once: false });
+
+    return () => {
+      document.removeEventListener('pointerdown', handleInteraction);
+      document.removeEventListener('keydown', handleInteraction);
+    };
+  }, []);
+
+  // Resume AudioContext whenever playback starts
+  useEffect(() => {
+    if (isPlaying && audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => {});
+    }
+  }, [isPlaying]);
 
   const playTrack = useCallback((track: TrackInfo) => {
     setCurrentTrack(track);
@@ -79,7 +137,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setQueue(prev => [...(prev ?? []), track]);
   }, []);
 
-  // Fetch more tracks from station when running low
   const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
     if (fetchingMoreRef.current) return [];
     fetchingMoreRef.current = true;
@@ -118,7 +175,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   }, [queue]);
 
-  // Auto-fetch more tracks when nearing end of station queue
   useEffect(() => {
     if (!currentStationId || queueIndex < 0) return;
     const remaining = queue.length - queueIndex - 1;
@@ -162,7 +218,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle audio element
   useEffect(() => {
     const audio = audioRef?.current;
     if (!audio) return;
@@ -230,6 +285,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setVolume,
         setCurrentStationId,
         audioRef,
+        analyserNode,
       }}
     >
       {children}

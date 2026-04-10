@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History } from 'lucide-react';
+import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
@@ -21,21 +21,18 @@ function formatTime(seconds: number): string {
   return `${m}:${s?.toString?.()?.padStart?.(2, '0') ?? '00'}`;
 }
 
-// LED Equalizer component
-function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'classic' }: {
-  audioRef: React.RefObject<HTMLAudioElement | null>;
+// LED Equalizer - uses analyser from PlayerProvider context
+function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = 'classic' }: {
+  analyserNode: AnalyserNode | null;
   isPlaying: boolean;
   bandCount?: number;
   colorScheme?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animRef = useRef<number>(0);
   const fallbackBarsRef = useRef<number[]>([]);
 
-  const getBarColor = useCallback((normalizedHeight: number, _bandIndex: number, totalBands: number) => {
+  const getBarColor = useCallback((normalizedHeight: number) => {
     if (colorScheme === 'purple') {
       if (normalizedHeight > 0.85) return '#ff3366';
       if (normalizedHeight > 0.65) return '#cc44ff';
@@ -52,24 +49,8 @@ function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'clas
   }, [colorScheme]);
 
   useEffect(() => {
-    const audio = audioRef?.current;
     const canvas = canvasRef.current;
-    if (!audio || !canvas) return;
-
-    if (!audioContextRef.current) {
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioContextRef.current = ctx;
-        const source = ctx.createMediaElementSource(audio);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.7;
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
-        sourceRef.current = source;
-        analyserRef.current = analyser;
-      } catch { /* fallback */ }
-    }
+    if (!canvas) return;
 
     if (fallbackBarsRef.current.length !== bandCount) {
       fallbackBarsRef.current = Array(bandCount).fill(0);
@@ -92,14 +73,14 @@ function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'clas
       const maxLeds = Math.floor(h / (ledH + ledGap));
 
       let dataArray: Uint8Array | null = null;
-      if (analyserRef.current) {
-        dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(dataArray);
+      if (analyserNode) {
+        dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+        analyserNode.getByteFrequencyData(dataArray);
       }
 
       for (let i = 0; i < bars; i++) {
         let value: number;
-        if (dataArray) {
+        if (dataArray && analyserNode) {
           const idx = Math.floor((i / bars) * dataArray.length);
           value = (dataArray[idx] ?? 0) / 255;
         } else if (isPlaying) {
@@ -118,8 +99,8 @@ function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'clas
           const y = h - (led + 1) * (ledH + ledGap);
           const normalizedH = led / maxLeds;
           if (led < activeLeds) {
-            ctx.fillStyle = getBarColor(normalizedH, i, bars);
-            ctx.shadowColor = getBarColor(normalizedH, i, bars);
+            ctx.fillStyle = getBarColor(normalizedH);
+            ctx.shadowColor = getBarColor(normalizedH);
             ctx.shadowBlur = 3;
           } else {
             ctx.fillStyle = 'rgba(255,255,255,0.04)';
@@ -137,7 +118,7 @@ function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'clas
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [audioRef, isPlaying, bandCount, getBarColor]);
+  }, [analyserNode, isPlaying, bandCount, getBarColor]);
 
   return (
     <canvas
@@ -150,43 +131,26 @@ function LEDEqualizer({ audioRef, isPlaying, bandCount = 32, colorScheme = 'clas
 }
 
 // Karaoke-style lyrics component
-function KaraokeLyrics({ lyrics, isPlaying, currentTime, duration }: {
+function KaraokeLyrics({ lyrics, currentTime, duration }: {
   lyrics: string | null;
-  isPlaying: boolean;
   currentTime: number;
   duration: number;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [visibleLines, setVisibleLines] = useState<string[]>([]);
   const [activeLineIdx, setActiveLineIdx] = useState(0);
 
-  // Parse lyrics into lines
   const allLines = useMemo(() => {
     if (!lyrics) return [];
     return lyrics.split('\n').filter(line => line.trim().length > 0);
   }, [lyrics]);
 
-  // Estimate current line from playback progress
   useEffect(() => {
     if (allLines.length === 0 || duration <= 0) {
-      setVisibleLines([]);
       setActiveLineIdx(0);
       return;
     }
-
     const progress = Math.min(1, currentTime / duration);
-    // Estimate which line we're on based on progress through song
     const estimatedLine = Math.floor(progress * allLines.length);
-    const clamped = Math.max(0, Math.min(allLines.length - 1, estimatedLine));
-
-    // Show a window of lines: 1 before, current, 2 after (4 lines visible)
-    const windowSize = 4;
-    const startIdx = Math.max(0, clamped - 1);
-    const endIdx = Math.min(allLines.length, startIdx + windowSize);
-    const window = allLines.slice(startIdx, endIdx);
-
-    setVisibleLines(window);
-    setActiveLineIdx(Math.min(1, clamped - startIdx)); // usually index 1 (the "current" line)
+    setActiveLineIdx(Math.max(0, Math.min(allLines.length - 1, estimatedLine)));
   }, [currentTime, duration, allLines]);
 
   if (!lyrics) {
@@ -198,21 +162,26 @@ function KaraokeLyrics({ lyrics, isPlaying, currentTime, duration }: {
     );
   }
 
+  // Show a window: 1 before, current, 2 after
+  const startIdx = Math.max(0, activeLineIdx - 1);
+  const visibleLines = allLines.slice(startIdx, startIdx + 4);
+  const activeInWindow = activeLineIdx - startIdx;
+
   return (
-    <div ref={containerRef} className="flex flex-col items-center justify-center h-full px-6 overflow-hidden">
-      <div className="space-y-3 w-full text-center">
+    <div className="flex flex-col items-center justify-center h-full px-6 overflow-hidden">
+      <div className="space-y-4 w-full text-center">
         {visibleLines.map((line, i) => (
           <motion.p
-            key={`${line}-${i}`}
+            key={`${startIdx + i}-${line.slice(0, 20)}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
             className={`font-display leading-snug transition-all duration-300 ${
-              i === activeLineIdx
-                ? 'text-[clamp(1.25rem,2.8vw,2.5rem)] font-bold text-foreground'
-                : i < activeLineIdx
+              i === activeInWindow
+                ? 'text-[clamp(1.5rem,3.2vw,3rem)] font-bold text-foreground'
+                : i < activeInWindow
                   ? 'text-[clamp(1rem,2vw,1.75rem)] text-muted-foreground/40'
-                  : 'text-[clamp(1rem,2vw,1.75rem)] text-muted-foreground/60'
+                  : 'text-[clamp(1.125rem,2.2vw,2rem)] text-muted-foreground/60'
             }`}
           >
             {line}
@@ -233,7 +202,7 @@ interface NowPlayingViewProps {
 export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic', previousTrackCount = 3, columnLayout = 'balanced' }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
-    togglePlay, nextTrack, prevTrack, seek, playQueue, audioRef
+    togglePlay, nextTrack, prevTrack, seek, playQueue, analyserNode
   } = usePlayer();
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -243,14 +212,12 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
       setLyrics(null);
       return;
     }
-
     setLyricsLoading(true);
     setLyrics(null);
     const params = new URLSearchParams({
       title: currentTrack.title,
       artist: currentTrack.artistName,
     });
-
     fetch(`/api/lyrics?${params}`)
       .then(r => r?.json?.())
       .then(data => setLyrics(data?.lyrics ?? null))
@@ -276,58 +243,65 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
     );
   }
 
-  // Queue: 3 previous, current, 5 upcoming visible by default
   const prevTracks = queue.slice(Math.max(0, queueIndex - previousTrackCount), queueIndex);
   const upcomingTracks = queue.slice(queueIndex + 1, queueIndex + 50);
-  // The visible queue should show ~3 prev + 1 current + 5 next = 9 items without scrolling
-  const visibleQueueCount = previousTrackCount + 1 + 5;
+  // Show limited items to keep text large: prev + 1 current + ~5 upcoming
+  const visibleUpcoming = upcomingTracks.slice(0, Math.max(2, 10 - previousTrackCount - 1));
+  const remainingUpcoming = upcomingTracks.slice(visibleUpcoming.length);
 
   return (
     <div className="flex flex-col h-full">
-      {/* 3-column content area - takes all remaining space above fixed bottom */}
+      {/* 3-column content area */}
       <div className="flex-1 flex gap-0 overflow-hidden min-h-0">
-        {/* LEFT: Album art + spinning vinyl */}
-        <div className="flex-shrink-0 flex flex-col items-center justify-center px-4" style={{ flex: `${colFlex[0]} 0 0%` }}>
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="relative"
-          >
-            {/* Turntable - scales with viewport */}
-            <div className="relative" style={{ width: 'clamp(180px, 22vw, 380px)', height: 'clamp(180px, 22vw, 380px)' }}>
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-900 shadow-2xl" />
-              <div className="absolute inset-[3px] rounded-full border border-zinc-600/30" />
-              <div className={`absolute inset-[8px] rounded-full overflow-hidden ${isPlaying ? 'animate-vinyl' : ''}`}
-                style={{ animationDuration: '2s' }}
-              >
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-900 via-black to-zinc-900" />
-                <div className="absolute inset-[20%] rounded-full overflow-hidden album-art-glow">
-                  <PlexImage thumb={currentTrack?.thumb} alt={currentTrack?.title ?? ''} size={500} />
-                </div>
-                <div className="absolute inset-[45%] rounded-full bg-zinc-700 border-2 border-zinc-500 shadow-inner" />
-                <div className="absolute inset-[12%] rounded-full border border-zinc-800/40" />
-                <div className="absolute inset-[16%] rounded-full border border-zinc-800/30" />
-                <div className="absolute inset-[38%] rounded-full border border-zinc-800/30" />
-                <div className="absolute inset-[42%] rounded-full border border-zinc-800/20" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-zinc-500 shadow-lg z-10" />
-              <div className={`absolute top-0 right-1 w-1 bg-zinc-500 rounded-full origin-top z-10 transition-transform duration-700 ${isPlaying ? 'rotate-[25deg]' : 'rotate-[5deg]'}`}
-                style={{ height: 'clamp(70px, 9vw, 140px)' }}
-              />
-            </div>
-          </motion.div>
+        {/* LEFT: Album art (square) + vinyl + track info with icons */}
+        <div className="flex-shrink-0 flex flex-col items-center justify-center px-4 gap-3" style={{ flex: `${colFlex[0]} 0 0%` }}>
+          {/* Square album art */}
+          <div className="relative rounded-xl overflow-hidden shadow-2xl" style={{ width: 'clamp(120px, 15vw, 280px)', height: 'clamp(120px, 15vw, 280px)' }}>
+            <PlexImage thumb={currentTrack?.thumb} alt={currentTrack?.title ?? ''} size={500} />
+          </div>
 
-          {/* Track info below turntable */}
-          <div className="mt-4 text-center w-full px-2">
-            <h2 className="text-[clamp(1rem,2.2vw,2rem)] font-display font-bold tracking-tight truncate">
-              {currentTrack?.title ?? ''}
-            </h2>
-            <p className="text-[clamp(0.875rem,1.5vw,1.5rem)] text-primary truncate mt-0.5">
-              {currentTrack?.artistName ?? ''}
-            </p>
-            <p className="text-[clamp(0.75rem,1.2vw,1.125rem)] text-muted-foreground truncate">
-              {currentTrack?.albumTitle ?? ''}
-            </p>
+          {/* Spinning vinyl below the art */}
+          <div className="relative" style={{ width: 'clamp(100px, 10vw, 180px)', height: 'clamp(100px, 10vw, 180px)' }}>
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-900 shadow-xl" />
+            <div className="absolute inset-[3px] rounded-full border border-zinc-600/30" />
+            <div className={`absolute inset-[6px] rounded-full overflow-hidden ${isPlaying ? 'animate-vinyl' : ''}`}
+              style={{ animationDuration: '2s' }}
+            >
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-900 via-black to-zinc-900" />
+              <div className="absolute inset-[25%] rounded-full overflow-hidden">
+                <PlexImage thumb={currentTrack?.thumb} alt="" size={200} />
+              </div>
+              <div className="absolute inset-[45%] rounded-full bg-zinc-700 border-2 border-zinc-500 shadow-inner" />
+              <div className="absolute inset-[14%] rounded-full border border-zinc-800/40" />
+              <div className="absolute inset-[38%] rounded-full border border-zinc-800/30" />
+            </div>
+            {/* Tonearm */}
+            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-zinc-500 shadow-lg z-10" />
+            <div className={`absolute top-0 right-0.5 w-0.5 bg-zinc-500 rounded-full origin-top z-10 transition-transform duration-700 ${isPlaying ? 'rotate-[25deg]' : 'rotate-[5deg]'}`}
+              style={{ height: 'clamp(40px, 5vw, 80px)' }}
+            />
+          </div>
+
+          {/* Track info with monochrome icons */}
+          <div className="w-full px-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Music2 className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)] text-muted-foreground flex-shrink-0" />
+              <h2 className="text-[clamp(1.125rem,2.5vw,2.25rem)] font-display font-bold tracking-tight truncate">
+                {currentTrack?.title ?? ''}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <User className="w-[clamp(0.875rem,1.3vw,1.25rem)] h-[clamp(0.875rem,1.3vw,1.25rem)] text-muted-foreground flex-shrink-0" />
+              <p className="text-[clamp(1rem,2vw,1.75rem)] text-primary truncate">
+                {currentTrack?.artistName ?? ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Disc3 className="w-[clamp(0.875rem,1.3vw,1.25rem)] h-[clamp(0.875rem,1.3vw,1.25rem)] text-muted-foreground flex-shrink-0" />
+              <p className="text-[clamp(0.875rem,1.5vw,1.375rem)] text-muted-foreground truncate">
+                {currentTrack?.albumTitle ?? ''}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -344,18 +318,18 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
                 <span className="ml-2 text-muted-foreground text-[clamp(0.875rem,1.3vw,1.125rem)]">Searching for lyrics...</span>
               </div>
             ) : (
-              <KaraokeLyrics lyrics={lyrics} isPlaying={isPlaying} currentTime={currentTime} duration={duration} />
+              <KaraokeLyrics lyrics={lyrics} currentTime={currentTime} duration={duration} />
             )}
           </div>
         </div>
 
-        {/* RIGHT: Queue */}
+        {/* RIGHT: Queue - auto-sized to fit ~10 items */}
         <div className="flex flex-col overflow-hidden" style={{ flex: `${colFlex[2]} 0 0%` }}>
           <div className="px-4 py-2 border-b border-border/20 flex-shrink-0">
-            <h3 className="text-[clamp(0.75rem,1vw,0.875rem)] font-display font-semibold flex items-center gap-2">
-              <ListMusic className="w-4 h-4 text-primary" />
+            <h3 className="text-[clamp(0.75rem,1.2vw,1rem)] font-display font-semibold flex items-center gap-2">
+              <ListMusic className="w-[clamp(0.875rem,1.2vw,1.125rem)] h-[clamp(0.875rem,1.2vw,1.125rem)] text-primary" />
               Queue
-              <span className="text-[clamp(0.6rem,0.8vw,0.75rem)] text-muted-foreground ml-auto">{upcomingTracks.length} upcoming</span>
+              <span className="text-[clamp(0.55rem,0.8vw,0.75rem)] text-muted-foreground ml-auto">{upcomingTracks.length} upcoming</span>
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -363,8 +337,8 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
             {prevTracks.length > 0 && (
               <>
                 <div className="px-3 py-1 bg-secondary/20 border-b border-border/10">
-                  <p className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-muted-foreground font-medium flex items-center gap-1">
-                    <History className="w-3 h-3" /> Previously Played
+                  <p className="text-[clamp(0.6rem,0.85vw,0.75rem)] text-muted-foreground font-medium flex items-center gap-1">
+                    <History className="w-[clamp(0.6rem,0.85vw,0.75rem)] h-[clamp(0.6rem,0.85vw,0.75rem)]" /> Previously Played
                   </p>
                 </div>
                 <div className="divide-y divide-border/10 opacity-50">
@@ -372,14 +346,14 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
                     <button
                       key={`prev-${track.id}-${i}`}
                       onClick={() => playQueue(queue, queueIndex - prevTracks.length + i)}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 transition-colors w-full text-left"
+                      className="flex items-center gap-2 px-3 py-[clamp(0.25rem,0.6vh,0.5rem)] hover:bg-secondary/50 transition-colors w-full text-left"
                     >
-                      <div className="w-[clamp(1.75rem,2.5vw,2.5rem)] h-[clamp(1.75rem,2.5vw,2.5rem)] rounded overflow-hidden bg-secondary flex-shrink-0">
+                      <div className="w-[clamp(2rem,3vw,3rem)] h-[clamp(2rem,3vw,3rem)] rounded overflow-hidden bg-secondary flex-shrink-0">
                         <PlexImage thumb={track?.thumb} alt={track?.title ?? ''} size={80} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[clamp(0.65rem,0.9vw,0.8rem)] font-medium truncate">{track?.title ?? ''}</p>
-                        <p className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
+                        <p className="text-[clamp(0.75rem,1.1vw,1rem)] font-medium truncate">{track?.title ?? ''}</p>
+                        <p className="text-[clamp(0.6rem,0.85vw,0.8rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
                       </div>
                     </button>
                   ))}
@@ -388,44 +362,49 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
             )}
 
             {/* Now playing indicator */}
-            <div className="px-3 py-2 bg-primary/10 border-y border-primary/20">
+            <div className="px-3 py-[clamp(0.375rem,0.8vh,0.625rem)] bg-primary/10 border-y border-primary/20">
               <div className="flex items-center gap-2">
-                <div className="w-[clamp(2rem,3vw,3rem)] h-[clamp(2rem,3vw,3rem)] rounded overflow-hidden bg-secondary flex-shrink-0 ring-2 ring-primary">
+                <div className="w-[clamp(2.25rem,3.5vw,3.5rem)] h-[clamp(2.25rem,3.5vw,3.5rem)] rounded overflow-hidden bg-secondary flex-shrink-0 ring-2 ring-primary">
                   <PlexImage thumb={currentTrack?.thumb} alt={currentTrack?.title ?? ''} size={80} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[clamp(0.7rem,1vw,0.875rem)] font-bold truncate text-primary">{currentTrack?.title ?? ''}</p>
-                  <p className="text-[clamp(0.6rem,0.8vw,0.7rem)] text-muted-foreground truncate">{currentTrack?.artistName ?? ''}</p>
+                  <p className="text-[clamp(0.8rem,1.2vw,1.125rem)] font-bold truncate text-primary">{currentTrack?.title ?? ''}</p>
+                  <p className="text-[clamp(0.65rem,0.9vw,0.8rem)] text-muted-foreground truncate">{currentTrack?.artistName ?? ''}</p>
                 </div>
-                <span className="text-[clamp(0.6rem,0.8vw,0.7rem)] font-medium text-primary">NOW</span>
+                <span className="text-[clamp(0.65rem,0.9vw,0.8rem)] font-bold text-primary">NOW</span>
               </div>
             </div>
 
-            {/* Upcoming */}
-            {upcomingTracks.length === 0 ? (
-              <div className="text-center py-6">
-                <Music2 className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-[clamp(0.65rem,0.9vw,0.8rem)] text-muted-foreground">Queue is empty</p>
+            {/* Upcoming - limited visible count */}
+            {visibleUpcoming.length === 0 && remainingUpcoming.length === 0 ? (
+              <div className="text-center py-4">
+                <Music2 className="w-6 h-6 text-muted-foreground/30 mx-auto mb-1" />
+                <p className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground">Queue is empty</p>
               </div>
             ) : (
               <div className="divide-y divide-border/10">
-                {upcomingTracks.map((track: TrackInfo, i: number) => (
+                {visibleUpcoming.map((track: TrackInfo, i: number) => (
                   <button
                     key={`${track.id}-${i}`}
                     onClick={() => playQueue(queue, queueIndex + 1 + i)}
-                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 transition-colors w-full text-left"
+                    className="flex items-center gap-2 px-3 py-[clamp(0.25rem,0.6vh,0.5rem)] hover:bg-secondary/50 transition-colors w-full text-left"
                   >
-                    <span className="w-5 text-center text-[clamp(0.6rem,0.8vw,0.75rem)] text-muted-foreground">{i + 1}</span>
-                    <div className="w-[clamp(1.75rem,2.5vw,2.5rem)] h-[clamp(1.75rem,2.5vw,2.5rem)] rounded overflow-hidden bg-secondary flex-shrink-0">
+                    <span className="w-[clamp(1rem,1.5vw,1.5rem)] text-center text-[clamp(0.65rem,0.9vw,0.8rem)] text-muted-foreground">{i + 1}</span>
+                    <div className="w-[clamp(2rem,3vw,3rem)] h-[clamp(2rem,3vw,3rem)] rounded overflow-hidden bg-secondary flex-shrink-0">
                       <PlexImage thumb={track?.thumb} alt={track?.title ?? ''} size={80} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[clamp(0.65rem,0.9vw,0.8rem)] font-medium truncate">{track?.title ?? ''}</p>
-                      <p className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
+                      <p className="text-[clamp(0.75rem,1.1vw,1rem)] font-medium truncate">{track?.title ?? ''}</p>
+                      <p className="text-[clamp(0.6rem,0.85vw,0.8rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
                     </div>
-                    <span className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-muted-foreground">{formatDuration(track?.duration)}</span>
+                    <span className="text-[clamp(0.6rem,0.85vw,0.75rem)] text-muted-foreground">{formatDuration(track?.duration)}</span>
                   </button>
                 ))}
+                {remainingUpcoming.length > 0 && (
+                  <div className="px-3 py-2 text-center">
+                    <p className="text-[clamp(0.6rem,0.85vw,0.75rem)] text-muted-foreground">+ {remainingUpcoming.length} more</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -434,11 +413,9 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
 
       {/* FIXED BOTTOM: EQ + Player bar */}
       <div className="flex-shrink-0 border-t border-border/20 bg-background/80 backdrop-blur-sm">
-        {/* EQ */}
         <div className="px-4 py-1">
-          <LEDEqualizer audioRef={audioRef} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} />
+          <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} />
         </div>
-        {/* Player controls */}
         <div className="px-4 py-2 border-t border-border/10">
           <div
             className="h-1.5 bg-muted/50 rounded-full cursor-pointer group mb-2"
