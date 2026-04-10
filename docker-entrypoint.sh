@@ -3,13 +3,12 @@ set -e
 
 echo "🎵 Plex Jukebox - Starting up..."
 
-# Wait for database to be ready and run migrations
-echo "📦 Waiting for database..."
+echo "📦 Applying database schema..."
 MAX_RETRIES=30
 RETRY_COUNT=0
-until npx prisma db push --skip-generate 2>/dev/null; do
+until node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss 2>/dev/null; do
   RETRY_COUNT=$((RETRY_COUNT + 1))
-  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+  if [ "$RETRY_COUNT" -ge "$MAX_RETRIES" ]; then
     echo "⚠️  Database not ready after $MAX_RETRIES attempts. Starting anyway..."
     break
   fi

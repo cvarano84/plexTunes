@@ -16,17 +16,16 @@ RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Fix Prisma schema output path for Docker (remove hardcoded dev path)
+ENV DOCKER_BUILD=1
+
+# Fix Prisma schema for Docker
 RUN sed -i '/output.*=.*"\/home/d' prisma/schema.prisma && \
     sed -i 's/binaryTargets = \[.*\]/binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]/' prisma/schema.prisma && \
     npx prisma generate
 
-# Build with standalone output for Docker
-ENV NEXT_OUTPUT_MODE=standalone
-ENV NEXT_DIST_DIR=.next
 RUN yarn build
 
-# Production image, copy all the files and run next
+# Production image
 FROM base AS runner
 WORKDIR /app
 
