@@ -15,7 +15,6 @@ const navItems: Array<{ view: ViewType; label: string; icon: React.ElementType }
   { view: 'artists', label: 'Artists', icon: Users },
   { view: 'search', label: 'Search', icon: Search },
   { view: 'now-playing', label: 'Now Playing', icon: Music2 },
-  { view: 'queue', label: 'Queue', icon: ListMusic },
 ];
 
 export default function JukeboxNav({ currentView, onNavigate }: JukeboxNavProps) {
@@ -23,13 +22,13 @@ export default function JukeboxNav({ currentView, onNavigate }: JukeboxNavProps)
 
   return (
     <nav className="sticky top-14 z-40 bg-background/60 backdrop-blur-xl border-b border-border/20">
-      <div className="max-w-[1200px] mx-auto px-2">
+      <div className="px-4">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-2">
           {navItems?.map?.((item: any) => {
             const Icon = item?.icon;
             const isActive = currentView === item?.view ||
               (item?.view === 'now-playing' && (currentView === 'artist-detail' || currentView === 'album-detail'));
-            const isDisabled = (item?.view === 'now-playing' || item?.view === 'queue') && !currentTrack;
+            const isDisabled = (item?.view === 'now-playing') && !currentTrack;
 
             return (
               <button
