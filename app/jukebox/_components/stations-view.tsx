@@ -182,6 +182,7 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
         mediaKey: t?.mediaKey ?? null,
         duration: t?.duration ?? null,
         ratingKey: t?.ratingKey ?? '',
+        year: t?.year ?? t?.album?.year ?? null,
       })) ?? [];
 
       if (tracks?.length > 0) {

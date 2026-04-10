@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         orderBy: { popularity: 'desc' },
         include: {
           artist: { select: { name: true } },
-          album: { select: { title: true, thumb: true } },
+          album: { select: { title: true, thumb: true, year: true } },
         },
       }),
     ]);

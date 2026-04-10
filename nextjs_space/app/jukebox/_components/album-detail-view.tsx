@@ -48,6 +48,7 @@ export default function AlbumDetailView({ albumId, onNavigate, onBack }: AlbumDe
     mediaKey: t?.mediaKey ?? null,
     duration: t?.duration ?? null,
     ratingKey: t?.ratingKey ?? '',
+    year: t?.year ?? album?.year ?? null,
   });
 
   const handlePlayAll = () => {

@@ -52,6 +52,7 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
       mediaKey: track?.mediaKey ?? null,
       duration: track?.duration ?? null,
       ratingKey: track?.ratingKey ?? '',
+      year: track?.year ?? track?.album?.year ?? null,
     };
     playTrack(t);
   };
@@ -66,6 +67,7 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
       mediaKey: track?.mediaKey ?? null,
       duration: track?.duration ?? null,
       ratingKey: track?.ratingKey ?? '',
+      year: track?.year ?? track?.album?.year ?? null,
     };
     addToQueue(t);
     toast.success('Added to queue');

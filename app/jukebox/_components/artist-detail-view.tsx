@@ -50,6 +50,7 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
     mediaKey: t?.mediaKey ?? null,
     duration: t?.duration ?? null,
     ratingKey: t?.ratingKey ?? '',
+    year: t?.year ?? null,
   });
 
   const handlePlayAll = () => {

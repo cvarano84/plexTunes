@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album } from 'lucide-react';
+import { Music2, Loader2, Mic2, ListMusic, Play, SkipForward, SkipBack, History, Disc3, User, Album, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
@@ -313,6 +313,7 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [trackSummary, setTrackSummary] = useState<string>('');
 
   useEffect(() => {
     if (!currentTrack?.title || !currentTrack?.artistName) {
@@ -338,6 +339,16 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
       .catch(() => { setLyrics(null); setSyncedLyrics(null); })
       .finally(() => setLyricsLoading(false));
   }, [currentTrack?.title, currentTrack?.artistName, currentTrack?.albumTitle, currentTrack?.duration]);
+
+  // Fetch track summary from Wikipedia (cached in DB)
+  useEffect(() => {
+    setTrackSummary('');
+    if (!currentTrack?.id) return;
+    fetch(`/api/tracks/summary?trackId=${encodeURIComponent(currentTrack.id)}`)
+      .then(r => r?.json?.())
+      .then(data => setTrackSummary(data?.summary ?? ''))
+      .catch(() => setTrackSummary(''));
+  }, [currentTrack?.id]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -367,15 +378,25 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
     <div className="flex flex-col h-full">
       {/* 3-column content area */}
       <div className="flex-1 flex gap-0 overflow-hidden min-h-0">
-        {/* LEFT: Album art (square) + vinyl + track info with icons */}
-        <div className="flex-shrink-0 flex flex-col items-center justify-center px-4 gap-3" style={{ flex: `${colFlex[0]} 0 0%` }}>
+        {/* LEFT: Year + Album art + vinyl + track info + summary */}
+        <div className="flex-shrink-0 flex flex-col items-center justify-center px-4 gap-2 overflow-hidden" style={{ flex: `${colFlex[0]} 0 0%` }}>
+          {/* Release year - large and prominent above art */}
+          {currentTrack?.year ? (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)] text-primary/70" />
+              <span className="text-[clamp(1.5rem,3vw,3rem)] font-display font-bold text-primary/80 tracking-wider">
+                {currentTrack.year}
+              </span>
+            </div>
+          ) : null}
+
           {/* Square album art */}
           <div className="relative rounded-xl overflow-hidden shadow-2xl" style={{ width: 'clamp(180px, 22vw, 420px)', height: 'clamp(180px, 22vw, 420px)' }}>
             <PlexImage thumb={currentTrack?.thumb} alt={currentTrack?.title ?? ''} size={600} />
           </div>
 
           {/* Spinning vinyl below the art */}
-          <div className="relative" style={{ width: 'clamp(80px, 8vw, 140px)', height: 'clamp(80px, 8vw, 140px)' }}>
+          <div className="relative" style={{ width: 'clamp(60px, 6vw, 110px)', height: 'clamp(60px, 6vw, 110px)' }}>
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-900 shadow-xl" />
             <div className="absolute inset-[3px] rounded-full border border-zinc-600/30" />
             <div className={`absolute inset-[6px] rounded-full overflow-hidden ${isPlaying ? 'animate-vinyl' : ''}`}
@@ -392,12 +413,12 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
             {/* Tonearm */}
             <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-zinc-500 shadow-lg z-10" />
             <div className={`absolute top-0 right-0.5 w-0.5 bg-zinc-500 rounded-full origin-top z-10 transition-transform duration-700 ${isPlaying ? 'rotate-[25deg]' : 'rotate-[5deg]'}`}
-              style={{ height: 'clamp(40px, 5vw, 80px)' }}
+              style={{ height: 'clamp(30px, 4vw, 60px)' }}
             />
           </div>
 
           {/* Track info with monochrome icons */}
-          <div className="w-full px-2 space-y-1.5">
+          <div className="w-full px-2 space-y-1">
             <div className="flex items-center gap-2">
               <Music2 className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)] text-muted-foreground flex-shrink-0" />
               <h2 className="text-[clamp(1.125rem,2.5vw,2.25rem)] font-display font-bold tracking-tight truncate">
@@ -417,6 +438,15 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
               </p>
             </div>
           </div>
+
+          {/* Wikipedia summary - small font for the person standing at the jukebox */}
+          {trackSummary ? (
+            <div className="w-full px-2 mt-1">
+              <p className="text-[clamp(0.6rem,0.8vw,0.75rem)] text-muted-foreground/70 leading-relaxed line-clamp-4">
+                {trackSummary}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* MIDDLE: Karaoke Lyrics */}

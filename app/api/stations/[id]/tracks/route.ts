@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         take: 100,
         include: {
           artist: { select: { name: true, thumb: true } },
-          album: { select: { title: true, thumb: true } },
+          album: { select: { title: true, thumb: true, year: true } },
         },
       });
 
@@ -69,7 +69,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         take: 500,
         include: {
           artist: { select: { name: true, thumb: true } },
-          album: { select: { title: true, thumb: true } },
+          album: { select: { title: true, thumb: true, year: true } },
         },
       });
 
@@ -101,7 +101,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       where: { year: { not: null } },
       include: {
         artist: { select: { name: true, thumb: true } },
-        album: { select: { title: true, thumb: true } },
+        album: { select: { title: true, thumb: true, year: true } },
       },
     });
 
