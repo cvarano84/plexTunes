@@ -17,6 +17,8 @@ interface SettingsViewProps {
   onKeyboardSizeChange: (val: 'small' | 'medium' | 'large') => void;
   columnLayout: string;
   onColumnLayoutChange: (val: string) => void;
+  artistRows: number;
+  onArtistRowsChange: (val: number) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -44,6 +46,7 @@ export default function SettingsView({
   previousTrackCount, onPreviousTrackCountChange,
   keyboardSize, onKeyboardSizeChange,
   columnLayout, onColumnLayoutChange,
+  artistRows, onArtistRowsChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -272,6 +275,24 @@ export default function SettingsView({
                   <p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Artist rows */}
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Artist Grid Rows</label>
+            <p className="text-xs text-muted-foreground mb-2">Number of rows visible when browsing artists horizontally</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="1"
+                max="6"
+                step="1"
+                value={artistRows}
+                onChange={(e) => onArtistRowsChange(parseInt(e.target.value))}
+                className="flex-1 h-2 accent-primary"
+              />
+              <span className="text-sm font-mono w-10 text-right">{artistRows}</span>
             </div>
           </div>
 

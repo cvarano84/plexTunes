@@ -30,10 +30,12 @@ const DECADE_LABELS: Record<string, string> = {
   '2020s': "2020's",
 };
 
-function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () => void; isPlaying: boolean }) {
+function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; onPlay: () => void; isPlaying: boolean; cardSize: number }) {
   const sampleArt = station?.sampleArt ?? [];
   const decadeLabel = DECADE_LABELS[station?.decade ?? ''] ?? station?.decade ?? '';
   const genreLabel = station?.genre ?? '';
+  const labelSize = cardSize > 250 ? 'text-lg' : cardSize > 180 ? 'text-base' : 'text-sm';
+  const subSize = cardSize > 250 ? 'text-sm' : 'text-xs';
 
   return (
     <motion.button
@@ -43,20 +45,21 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
       whileTap={{ scale: 0.97 }}
       onClick={onPlay}
       disabled={isPlaying}
-      className="flex-shrink-0 w-[200px] group relative"
+      className="flex-shrink-0 group relative"
+      style={{ width: cardSize, height: cardSize }}
     >
-      <div className={`relative w-[200px] h-[200px] rounded-xl overflow-hidden bg-gradient-to-br ${DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted'}`}>
+      <div className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br ${DECADE_COLORS[station?.decade ?? ''] ?? 'from-secondary to-muted'}`}>
         {sampleArt.length >= 4 ? (
           <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
             {sampleArt.slice(0, 4).map((thumb: string, i: number) => (
               <div key={i} className="w-full h-full overflow-hidden">
-                <PlexImage thumb={thumb} alt="" size={200} />
+                <PlexImage thumb={thumb} alt="" size={Math.round(cardSize)} />
               </div>
             ))}
           </div>
         ) : sampleArt.length >= 1 ? (
           <div className="w-full h-full">
-            <PlexImage thumb={sampleArt[0]} alt="" size={400} />
+            <PlexImage thumb={sampleArt[0]} alt="" size={Math.round(cardSize * 2)} />
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -74,10 +77,10 @@ function StationCard({ station, onPlay, isPlaying }: { station: any; onPlay: () 
           </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 p-3">
-          <h4 className="font-display font-bold text-base text-white leading-tight">
+          <h4 className={`font-display font-bold ${labelSize} text-white leading-tight`}>
             {decadeLabel} {genreLabel}
           </h4>
-          <p className="text-xs text-white/60 mt-0.5">{station?.trackCount ?? 0} tracks</p>
+          <p className={`${subSize} text-white/60 mt-0.5`}>{station?.trackCount ?? 0} tracks</p>
         </div>
       </div>
     </motion.button>
@@ -90,8 +93,10 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
   const [playingStation, setPlayingStation] = useState<string | null>(null);
   const { playQueue, setCurrentStationId } = usePlayer();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [cardSize, setCardSize] = useState(200);
 
   useEffect(() => {
     fetch('/api/stations')
@@ -102,6 +107,23 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  // Calculate card size based on available vertical space
+  useEffect(() => {
+    const calcSize = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      // Available height is the container's client height
+      const available = container.clientHeight;
+      // Cards should be ~75% of the available height
+      const size = Math.max(150, Math.min(500, Math.round(available * 0.75)));
+      setCardSize(size);
+    };
+    calcSize();
+    const ro = new ResizeObserver(calcSize);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [stations]);
 
   const checkScroll = () => {
     const el = scrollRef.current;
@@ -126,7 +148,7 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
   const scroll = (dir: 'left' | 'right') => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -600 : 600, behavior: 'smooth' });
+    el.scrollBy({ left: dir === 'left' ? -(cardSize + 16) * 2 : (cardSize + 16) * 2, behavior: 'smooth' });
   };
 
   const handlePlayStation = async (station: any) => {
@@ -163,7 +185,7 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -171,25 +193,28 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
 
   if ((stations?.length ?? 0) === 0) {
     return (
-      <div className="mx-auto px-6 py-16 text-center">
-        <Radio className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-        <h2 className="text-2xl font-display font-bold mb-2">No Stations Yet</h2>
-        <p className="text-muted-foreground mb-6">Stations are generated based on your music library. Sync your library first!</p>
+      <div className="flex items-center justify-center h-full text-center px-6">
+        <div>
+          <Radio className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-2xl font-display font-bold mb-2">No Stations Yet</h2>
+          <p className="text-muted-foreground">Stations are generated based on your music library. Sync your library first!</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div ref={containerRef} className="flex flex-col h-full px-6">
+      {/* Header row */}
+      <div className="flex items-center justify-between py-3 flex-shrink-0">
         <div>
-          <h2 className="text-2xl font-display font-bold tracking-tight flex items-center gap-3">
-            <Radio className="w-6 h-6 text-primary" />
+          <h2 className="text-[clamp(1.25rem,2.5vw,2rem)] font-display font-bold tracking-tight flex items-center gap-3">
+            <Radio className="w-[clamp(1.25rem,2vw,1.75rem)] h-[clamp(1.25rem,2vw,1.75rem)] text-primary" />
             Smart Stations
           </h2>
-          <p className="text-muted-foreground text-sm mt-1">Auto-generated from your library -- Swipe to browse</p>
+          <p className="text-muted-foreground text-[clamp(0.75rem,1.2vw,1rem)] mt-1">Auto-generated from your library -- Swipe to browse</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => scroll('left')}
             disabled={!canScrollLeft}
@@ -207,19 +232,23 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-none scroll-smooth flex-1 items-start"
-        style={{ scrollSnapType: 'x mandatory' }}
-      >
-        {stations.map((station: any) => (
-          <StationCard
-            key={station?.id}
-            station={station}
-            onPlay={() => handlePlayStation(station)}
-            isPlaying={playingStation === station?.id}
-          />
-        ))}
+      {/* Stations row - centered vertically in remaining space */}
+      <div className="flex-1 flex items-center min-h-0">
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto scrollbar-none scroll-smooth w-full items-center"
+          style={{ scrollSnapType: 'x mandatory' }}
+        >
+          {stations.map((station: any) => (
+            <StationCard
+              key={station?.id}
+              station={station}
+              onPlay={() => handlePlayStation(station)}
+              isPlaying={playingStation === station?.id}
+              cardSize={cardSize}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

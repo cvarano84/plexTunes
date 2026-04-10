@@ -34,6 +34,7 @@ function JukeboxInner() {
   const [previousTrackCount, setPreviousTrackCount] = useState(5);
   const [keyboardSize, setKeyboardSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [columnLayout, setColumnLayout] = useState('balanced');
+  const [artistRows, setArtistRows] = useState(4);
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -55,6 +56,7 @@ function JukeboxInner() {
         if (s.previousTrackCount !== undefined) setPreviousTrackCount(s.previousTrackCount);
         if (s.keyboardSize !== undefined) setKeyboardSize(s.keyboardSize);
         if (s.columnLayout !== undefined) setColumnLayout(s.columnLayout);
+        if (s.artistRows !== undefined) setArtistRows(s.artistRows);
       }
     } catch { /* ignore */ }
   }, []);
@@ -63,10 +65,10 @@ function JukeboxInner() {
   useEffect(() => {
     try {
       localStorage.setItem('jukebox-settings', JSON.stringify({
-        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout
+        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows
       }));
     } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -152,11 +154,10 @@ function JukeboxInner() {
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
-      <main className={`flex-1 overflow-y-auto ${view === 'now-playing' ? '' : 'pb-32'}`}
-        style={view === 'now-playing' ? { paddingBottom: 0, overflow: 'hidden' } : undefined}
+      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' ? 'overflow-hidden' : 'overflow-y-auto pb-32'}`}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} />}
-        {view === 'artists' && <ArtistsView onNavigate={navigate} />}
+        {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
           <NowPlayingView
@@ -195,6 +196,8 @@ function JukeboxInner() {
             onKeyboardSizeChange={setKeyboardSize}
             columnLayout={columnLayout}
             onColumnLayoutChange={setColumnLayout}
+            artistRows={artistRows}
+            onArtistRowsChange={setArtistRows}
           />
         )}
       </main>
