@@ -12,6 +12,7 @@ interface PlexImageProps {
 
 export default function PlexImage({ thumb, alt, className = '', size = 600 }: PlexImageProps) {
   const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   if (!thumb || error) {
     return (
@@ -24,12 +25,18 @@ export default function PlexImage({ thumb, alt, className = '', size = 600 }: Pl
   const src = `/api/plex/image?thumb=${encodeURIComponent(thumb)}&w=${size}&h=${size}`;
 
   return (
-    <img
-      src={src}
-      alt={alt ?? 'Cover art'}
-      className={`w-full h-full object-cover ${className}`}
-      loading="lazy"
-      onError={() => setError(true)}
-    />
+    <div className={`w-full h-full relative ${className}`}>
+      {!loaded && (
+        <div className="absolute inset-0 bg-secondary animate-pulse" />
+      )}
+      <img
+        src={src}
+        alt={alt ?? 'Cover art'}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+    </div>
   );
 }

@@ -152,7 +152,7 @@ function JukeboxInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background hero-gradient">
+    <div className="h-screen flex flex-col bg-background hero-gradient overflow-hidden">
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       

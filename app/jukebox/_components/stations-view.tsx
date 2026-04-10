@@ -36,8 +36,8 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
   const decadeLabel = DECADE_LABELS[station?.decade ?? ''] ?? station?.decade ?? '';
   const genreLabel = station?.genre ?? '';
   const stationName = station?.name ?? `${decadeLabel} ${genreLabel}`.trim();
-  const labelSize = cardSize > 250 ? 'text-lg' : cardSize > 180 ? 'text-base' : 'text-sm';
-  const subSize = cardSize > 250 ? 'text-sm' : 'text-xs';
+  const labelSize = cardSize > 400 ? 'text-2xl' : cardSize > 300 ? 'text-xl' : cardSize > 250 ? 'text-lg' : 'text-base';
+  const subSize = cardSize > 400 ? 'text-base' : cardSize > 300 ? 'text-sm' : 'text-xs';
 
   // Determine grid: 3x3 if we have 9+ images, 2x2 if 4+, else single
   const useGrid3 = sampleArt.length >= 9;
@@ -84,15 +84,15 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="w-14 h-14 rounded-full bg-primary/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
+          <div className="w-[clamp(3rem,8%,5rem)] h-[clamp(3rem,8%,5rem)] rounded-full bg-primary/90 flex items-center justify-center shadow-lg backdrop-blur-sm">
             {isPlaying ? (
-              <Loader2 className="w-6 h-6 animate-spin text-primary-foreground" />
+              <Loader2 className="w-[40%] h-[40%] animate-spin text-primary-foreground" />
             ) : (
-              <Play className="w-6 h-6 text-primary-foreground ml-0.5" />
+              <Play className="w-[40%] h-[40%] text-primary-foreground ml-0.5" />
             )}
           </div>
         </div>
-        <div className="absolute bottom-0 left-0 right-0 p-3">
+        <div className="absolute bottom-0 left-0 right-0 p-4">
           <h4 className={`font-display font-bold ${labelSize} text-white leading-tight`}>
             {stationName}
           </h4>
@@ -132,7 +132,7 @@ export default function StationsView({ onNavigate }: StationsViewProps) {
       // Available height is the container's client height
       const available = container.clientHeight;
       // Cards should be ~75% of the available height
-      const size = Math.max(150, Math.min(500, Math.round(available * 0.75)));
+      const size = Math.max(200, Math.round(available * 0.85));
       setCardSize(size);
     };
     calcSize();
