@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Play, Plus, Loader2, Music2, Star, Clock } from 'lucide-react';
+import { ArrowLeft, Play, Plus, Loader2, Music2, Star, Clock, ListPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -25,7 +25,7 @@ function formatDuration(ms: number | null | undefined): string {
 export default function AlbumDetailView({ albumId, onNavigate, onBack }: AlbumDetailViewProps) {
   const [album, setAlbum] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { playTrack, playQueue, addToQueue } = usePlayer();
+  const { playTrack, playQueue, addToQueue, playNext } = usePlayer();
 
   useEffect(() => {
     if (!albumId) return;
@@ -145,18 +145,18 @@ export default function AlbumDetailView({ albumId, onNavigate, onBack }: AlbumDe
             <span className="text-xs text-muted-foreground w-12 text-right">
               {formatDuration(track?.duration)}
             </span>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => { addToQueue(makeTrackInfo(track)); toast.success('Added to queue'); }}
-                className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80"
+                className="px-3 py-1.5 rounded-lg bg-secondary/70 text-foreground text-xs font-medium hover:bg-secondary transition-colors flex items-center gap-1"
               >
-                <Plus className="w-4 h-4" />
+                <ListPlus className="w-3.5 h-3.5" /> Queue
               </button>
               <button
-                onClick={() => playTrack(makeTrackInfo(track))}
-                className="w-8 h-8 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90"
+                onClick={() => { playNext(makeTrackInfo(track)); toast.success('Playing next'); }}
+                className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-xs font-medium hover:bg-primary/30 transition-colors flex items-center gap-1"
               >
-                <Play className="w-4 h-4 text-primary-foreground ml-0.5" />
+                <Play className="w-3.5 h-3.5" /> Next
               </button>
             </div>
           </motion.div>

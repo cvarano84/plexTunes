@@ -23,6 +23,7 @@ function formatTime(seconds: number): string {
 }
 
 // LED Equalizer - uses analyser from PlayerProvider context
+// High-DPI crisp rendering: scale canvas to devicePixelRatio, integer coordinates, no shadow blur
 function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = 'classic' }: {
   analyserNode: AnalyserNode | null;
   isPlaying: boolean;
@@ -49,6 +50,26 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
     return '#22c55e';
   }, [colorScheme]);
 
+  // Scale canvas to actual pixel density
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width * dpr);
+      const h = Math.round(rect.height * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+    };
+    resizeCanvas();
+    const ro = new ResizeObserver(resizeCanvas);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -66,11 +87,15 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
+      // Disable image smoothing for pixel-perfect LEDs
+      ctx.imageSmoothingEnabled = false;
+
       const bars = bandCount;
-      const gap = 2;
-      const barW = Math.max(2, (w - gap * (bars - 1)) / bars);
-      const ledH = 4;
-      const ledGap = 2;
+      const dpr = window.devicePixelRatio || 1;
+      const gap = Math.round(2 * dpr);
+      const barW = Math.max(Math.round(2 * dpr), Math.floor((w - gap * (bars - 1)) / bars));
+      const ledH = Math.round(4 * dpr);
+      const ledGap = Math.round(2 * dpr);
       const maxLeds = Math.floor(h / (ledH + ledGap));
 
       let dataArray: Uint8Array | null = null;
@@ -78,6 +103,10 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
         dataArray = new Uint8Array(analyserNode.frequencyBinCount);
         analyserNode.getByteFrequencyData(dataArray);
       }
+
+      // No shadows for crisp rendering
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
 
       for (let i = 0; i < bars; i++) {
         let value: number;
@@ -94,22 +123,18 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
         }
 
         const activeLeds = Math.max(0, Math.round(value * maxLeds));
-        const x = i * (barW + gap);
+        const x = Math.round(i * (barW + gap));
 
         for (let led = 0; led < maxLeds; led++) {
-          const y = h - (led + 1) * (ledH + ledGap);
+          const y = Math.round(h - (led + 1) * (ledH + ledGap));
           const normalizedH = led / maxLeds;
           if (led < activeLeds) {
             ctx.fillStyle = getBarColor(normalizedH);
-            ctx.shadowColor = getBarColor(normalizedH);
-            ctx.shadowBlur = 3;
           } else {
             ctx.fillStyle = 'rgba(255,255,255,0.04)';
-            ctx.shadowBlur = 0;
           }
           ctx.fillRect(x, y, barW, ledH);
         }
-        ctx.shadowBlur = 0;
       }
 
       animRef.current = requestAnimationFrame(draw);
@@ -124,20 +149,19 @@ function LEDEqualizer({ analyserNode, isPlaying, bandCount = 32, colorScheme = '
   return (
     <canvas
       ref={canvasRef}
-      width={1200}
-      height={80}
       className="w-full h-[clamp(3rem,5vh,5rem)] rounded-lg"
+      style={{ imageRendering: 'pixelated' }}
     />
   );
 }
 
-// Zoom level font sizes: [active, inactive] in clamp values
-const LYRICS_ZOOM_LEVELS: Record<number, { active: string; inactive: string; lineHeight: string; gap: string }> = {
-  1: { active: 'clamp(0.9rem,1.5vw,1.25rem)', inactive: 'clamp(0.75rem,1.2vw,1rem)', lineHeight: '1.5', gap: '0.5rem' },
-  2: { active: 'clamp(1.1rem,2vw,1.75rem)', inactive: 'clamp(0.875rem,1.5vw,1.25rem)', lineHeight: '1.45', gap: '0.625rem' },
-  3: { active: 'clamp(1.35rem,2.5vw,2.25rem)', inactive: 'clamp(1rem,1.8vw,1.5rem)', lineHeight: '1.4', gap: '0.75rem' },
-  4: { active: 'clamp(1.75rem,3.2vw,3rem)', inactive: 'clamp(1.25rem,2.2vw,2rem)', lineHeight: '1.35', gap: '1rem' },
-  5: { active: 'clamp(2.25rem,4vw,4rem)', inactive: 'clamp(1.5rem,2.8vw,2.5rem)', lineHeight: '1.3', gap: '1.25rem' },
+// Zoom level font sizes: uniform size per zoom level (no reflow between active/inactive)
+const LYRICS_ZOOM_LEVELS: Record<number, { size: string; lineHeight: string; gap: string }> = {
+  1: { size: 'clamp(0.9rem,1.5vw,1.25rem)', lineHeight: '1.5', gap: '0.5rem' },
+  2: { size: 'clamp(1.1rem,2vw,1.75rem)', lineHeight: '1.45', gap: '0.625rem' },
+  3: { size: 'clamp(1.35rem,2.5vw,2.25rem)', lineHeight: '1.4', gap: '0.75rem' },
+  4: { size: 'clamp(1.75rem,3.2vw,3rem)', lineHeight: '1.35', gap: '1rem' },
+  5: { size: 'clamp(2.25rem,4vw,4rem)', lineHeight: '1.3', gap: '1.25rem' },
 };
 
 // Parse LRC format timestamps: [mm:ss.xx] text -> { time: seconds, text: string }
@@ -274,12 +298,11 @@ function KaraokeLyrics({ lyrics, syncedLyrics, currentTime, duration, zoom = 3 }
               ref={(el) => { lineRefs.current[i] = el; }}
               className="font-display transition-all duration-700 ease-out"
               style={{
-                fontSize: isActive ? zoomConfig.active : zoomConfig.inactive,
+                fontSize: zoomConfig.size,
                 lineHeight: zoomConfig.lineHeight,
                 fontWeight: isActive ? 700 : 400,
                 color: isActive ? 'var(--foreground)' : 'var(--muted-foreground)',
                 opacity,
-                transform: isActive ? 'scale(1.02)' : 'scale(1)',
               }}
             >
               {line.text}
@@ -315,6 +338,7 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
   const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [trackSummary, setTrackSummary] = useState<string>('');
+  const [billboardData, setBillboardData] = useState<{ peak: number | null; weeks: number | null } | null>(null);
 
   useEffect(() => {
     if (!currentTrack?.title || !currentTrack?.artistName) {
@@ -351,10 +375,29 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
       .catch(() => setTrackSummary(''));
   }, [currentTrack?.id]);
 
+  // Fetch Billboard chart data (cached in DB via LLM)
+  useEffect(() => {
+    setBillboardData(null);
+    if (!currentTrack?.id) return;
+    fetch(`/api/tracks/billboard?trackId=${encodeURIComponent(currentTrack.id)}`)
+      .then(r => r?.json?.())
+      .then(data => {
+        if (data?.peak != null || data?.weeks != null) {
+          setBillboardData({ peak: data.peak ?? null, weeks: data.weeks ?? null });
+        }
+      })
+      .catch(() => setBillboardData(null));
+  }, [currentTrack?.id]);
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const colFlex = columnLayout === 'lyrics' ? [25, 50, 25]
     : columnLayout === 'art' ? [40, 35, 25]
+    : columnLayout === 'compact-queue' ? [42, 43, 15]
+    : columnLayout.startsWith('custom:') ? (() => {
+        const parts = columnLayout.replace('custom:', '').split(',').map(Number);
+        return parts.length === 3 ? parts : [30, 40, 30];
+      })()
     : [30, 40, 30];
 
   if (!currentTrack) {
@@ -438,6 +481,24 @@ export default function NowPlayingView({ eqBands = 32, eqColorScheme = 'classic'
               </p>
             </div>
           </div>
+
+          {/* Billboard chart data */}
+          {billboardData && (billboardData.peak != null || billboardData.weeks != null) ? (
+            <div className="w-full px-2 mt-2 flex items-center gap-3">
+              {billboardData.peak != null && (
+                <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 rounded-lg px-3 py-1">
+                  <span className="text-[clamp(0.65rem,0.85vw,0.8rem)] text-amber-400 font-bold">#{billboardData.peak}</span>
+                  <span className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-amber-400/70">peak</span>
+                </div>
+              )}
+              {billboardData.weeks != null && (
+                <div className="flex items-center gap-1.5 bg-sky-500/15 border border-sky-500/30 rounded-lg px-3 py-1">
+                  <span className="text-[clamp(0.65rem,0.85vw,0.8rem)] text-sky-400 font-bold">{billboardData.weeks}</span>
+                  <span className="text-[clamp(0.55rem,0.7vw,0.65rem)] text-sky-400/70">wks on chart</span>
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {/* Wikipedia summary - small font for the person standing at the jukebox */}
           {trackSummary ? (

@@ -23,6 +23,8 @@ interface SettingsViewProps {
   onStationRowsChange: (val: number) => void;
   lyricsZoom: number;
   onLyricsZoomChange: (val: number) => void;
+  jukeboxTitle: string;
+  onJukeboxTitleChange: (val: string) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -57,6 +59,97 @@ const LYRICS_PROVIDERS: LyricsProvider[] = [
   { id: 'genius', label: 'Genius', desc: 'Requires access token. Plain text lyrics only.', requiresKey: true, keyName: 'GENIUS_ACCESS_TOKEN' },
 ];
 
+// Dual-handle slider for 3-way column split
+function TripleSlider({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const draggingRef = React.useRef<'left' | 'right' | null>(null);
+
+  // Parse current layout to percentages
+  const parseLayout = (v: string): [number, number, number] => {
+    if (v.startsWith('custom:')) {
+      const parts = v.replace('custom:', '').split(',').map(Number);
+      if (parts.length === 3) return parts as [number, number, number];
+    }
+    if (v === 'lyrics') return [25, 50, 25];
+    if (v === 'art') return [40, 35, 25];
+    if (v === 'compact-queue') return [42, 43, 15];
+    return [30, 40, 30];
+  };
+
+  const [left, mid, right] = parseLayout(value);
+  const divider1 = left; // left edge of middle section
+  const divider2 = left + mid; // right edge of middle section
+
+  const updateFromPointer = React.useCallback((clientX: number) => {
+    const el = trackRef.current;
+    if (!el || !draggingRef.current) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+    let d1 = divider1, d2 = divider2;
+    if (draggingRef.current === 'left') {
+      d1 = Math.min(pct, d2 - 10);
+    } else {
+      d2 = Math.max(pct, d1 + 10);
+    }
+    const l = Math.round(d1);
+    const r = Math.round(100 - d2);
+    const m = 100 - l - r;
+    onChange(`custom:${l},${m},${r}`);
+  }, [divider1, divider2, onChange]);
+
+  const handlePointerDown = (handle: 'left' | 'right') => (e: React.PointerEvent) => {
+    e.preventDefault();
+    draggingRef.current = handle;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = React.useCallback((e: React.PointerEvent) => {
+    if (draggingRef.current) updateFromPointer(e.clientX);
+  }, [updateFromPointer]);
+
+  const handlePointerUp = React.useCallback(() => {
+    draggingRef.current = null;
+  }, []);
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative h-10 rounded-lg overflow-hidden cursor-pointer touch-none select-none"
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      {/* Colored sections */}
+      <div className="absolute inset-0 flex">
+        <div className="h-full bg-violet-600/40 flex items-center justify-center" style={{ width: `${left}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Art {left}%</span>
+        </div>
+        <div className="h-full bg-cyan-600/40 flex items-center justify-center" style={{ width: `${mid}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Lyrics {mid}%</span>
+        </div>
+        <div className="h-full bg-amber-600/40 flex items-center justify-center" style={{ width: `${right}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Queue {right}%</span>
+        </div>
+      </div>
+      {/* Drag handles */}
+      <div
+        className="absolute top-0 bottom-0 w-4 -ml-2 cursor-col-resize z-10 flex items-center justify-center"
+        style={{ left: `${divider1}%` }}
+        onPointerDown={handlePointerDown('left')}
+      >
+        <div className="w-1 h-6 rounded-full bg-white shadow-lg" />
+      </div>
+      <div
+        className="absolute top-0 bottom-0 w-4 -ml-2 cursor-col-resize z-10 flex items-center justify-center"
+        style={{ left: `${divider2}%` }}
+        onPointerDown={handlePointerDown('right')}
+      >
+        <div className="w-1 h-6 rounded-full bg-white shadow-lg" />
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsView({
   idleTimeout, onIdleTimeoutChange,
   eqBands, onEqBandsChange,
@@ -67,6 +160,7 @@ export default function SettingsView({
   artistRows, onArtistRowsChange,
   stationRows, onStationRowsChange,
   lyricsZoom, onLyricsZoomChange,
+  jukeboxTitle, onJukeboxTitleChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -629,6 +723,18 @@ export default function SettingsView({
         <h3 className="text-lg font-display font-semibold mb-3">Display & Behavior</h3>
         <div className="space-y-4">
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Jukebox Title</label>
+            <p className="text-xs text-muted-foreground mb-2">Customize the title shown in the header</p>
+            <input
+              type="text"
+              value={jukeboxTitle}
+              onChange={(e) => onJukeboxTitleChange(e.target.value)}
+              placeholder="Plex Jukebox"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+            />
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Auto-switch to Now Playing</label>
             <p className="text-xs text-muted-foreground mb-2">Automatically show Now Playing after idle</p>
             <div className="flex items-center gap-3">
@@ -639,17 +745,23 @@ export default function SettingsView({
 
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Now Playing Layout</label>
-            <p className="text-xs text-muted-foreground mb-2">Column size distribution</p>
-            <div className="flex gap-2 mt-2">
+            <p className="text-xs text-muted-foreground mb-2">Column size distribution (Art / Lyrics / Queue)</p>
+            <div className="flex gap-2 mt-2 flex-wrap">
               {[
                 { id: 'balanced', label: 'Balanced', desc: '30 / 40 / 30' },
                 { id: 'lyrics', label: 'Lyrics Focus', desc: '25 / 50 / 25' },
                 { id: 'art', label: 'Art Focus', desc: '40 / 35 / 25' },
+                { id: 'compact-queue', label: 'Compact Queue', desc: '42 / 43 / 15' },
               ].map((layout) => (
-                <button key={layout.id} onClick={() => onColumnLayoutChange(layout.id)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${columnLayout === layout.id ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
+                <button key={layout.id} onClick={() => onColumnLayoutChange(layout.id)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${columnLayout === layout.id || (columnLayout.startsWith('custom:') && layout.id === 'custom') ? 'bg-primary text-primary-foreground ring-2 ring-primary/50' : 'bg-secondary hover:bg-secondary/80'}`}>
                   {layout.label}<p className="text-[10px] opacity-70 mt-0.5">{layout.desc}</p>
                 </button>
               ))}
+            </div>
+            {/* Custom slider - dual handle visualization */}
+            <div className="mt-3">
+              <p className="text-xs text-muted-foreground mb-2">Custom: drag to adjust proportions</p>
+              <TripleSlider value={columnLayout} onChange={onColumnLayoutChange} />
             </div>
           </div>
 

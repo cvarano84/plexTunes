@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Volume2, VolumeX, SlidersHorizontal, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer, EQ_PRESETS, type EqGains } from '@/lib/player-context';
@@ -18,11 +18,37 @@ const BAND_LABELS: { key: keyof EqGains; label: string; color: string }[] = [
 export default function AudioControls({ compact = false }: AudioControlsProps) {
   const { volume, setVolume, eqGains, setEqGain, setEqPreset, eqPreset } = usePlayer();
   const [showEq, setShowEq] = useState(false);
+  const draggingRef = useRef(false);
+  const sliderRef = useRef<HTMLDivElement>(null);
 
   const iconSize = compact
     ? 'w-[clamp(1rem,1.2vw,1.25rem)] h-[clamp(1rem,1.2vw,1.25rem)]'
     : 'w-[clamp(1.125rem,1.5vw,1.5rem)] h-[clamp(1.125rem,1.5vw,1.5rem)]';
   const sliderW = compact ? 'w-[clamp(70px,8vw,120px)]' : 'w-[clamp(90px,10vw,160px)]';
+
+  const updateVolumeFromEvent = useCallback((clientX: number) => {
+    const el = sliderRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    setVolume(pct);
+  }, [setVolume]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    updateVolumeFromEvent(e.clientX);
+  }, [updateVolumeFromEvent]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!draggingRef.current) return;
+    updateVolumeFromEvent(e.clientX);
+  }, [updateVolumeFromEvent]);
+
+  const handlePointerUp = useCallback(() => {
+    draggingRef.current = false;
+  }, []);
 
   return (
     <div className="flex items-center gap-2 flex-shrink-0 relative">
@@ -34,21 +60,22 @@ export default function AudioControls({ compact = false }: AudioControlsProps) {
         {volume === 0 ? <VolumeX className={iconSize} /> : <Volume2 className={iconSize} />}
       </button>
       <div
-        className={`${sliderW} h-1.5 bg-muted/50 rounded-full cursor-pointer relative group`}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const pct = Math.max(0, Math.min(1, x / rect.width));
-          setVolume(pct);
-        }}
+        ref={sliderRef}
+        className={`${sliderW} h-4 flex items-center cursor-pointer relative group touch-none`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
+        <div className="w-full h-1.5 bg-muted/50 rounded-full relative">
+          <div
+            className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full"
+            style={{ width: `${(volume ?? 1) * 100}%` }}
+          />
+        </div>
         <div
-          className="h-full bg-gradient-to-r from-primary/70 to-primary rounded-full"
-          style={{ width: `${(volume ?? 1) * 100}%` }}
-        />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary shadow-lg border-2 border-background"
-          style={{ left: `calc(${(volume ?? 1) * 100}% - 6px)` }}
+          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary shadow-lg border-2 border-background pointer-events-none"
+          style={{ left: `calc(${(volume ?? 1) * 100}% - 8px)` }}
         />
       </div>
 
@@ -79,7 +106,7 @@ export default function AudioControls({ compact = false }: AudioControlsProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="absolute bottom-full left-0 mb-3 z-[61] bg-card/98 backdrop-blur-xl border border-border/30 rounded-xl shadow-2xl p-4"
+              className="absolute bottom-full left-0 mb-3 z-[61] bg-card border border-border/40 rounded-xl shadow-2xl p-4"
               style={{ minWidth: 'clamp(260px, 22vw, 340px)' }}
             >
               <div className="flex items-center justify-between mb-3">

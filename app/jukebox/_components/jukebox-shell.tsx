@@ -15,9 +15,10 @@ import ArtistDetailView from './artist-detail-view';
 import AlbumDetailView from './album-detail-view';
 import QueueView from './queue-view';
 import SettingsView from './settings-view';
+import StatsView from './stats-view';
 import TouchKeyboard from './touch-keyboard';
 
-export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings';
+export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats';
 
 function JukeboxInner() {
   const router = useRouter();
@@ -37,6 +38,7 @@ function JukeboxInner() {
   const [artistRows, setArtistRows] = useState(4);
   const [stationRows, setStationRows] = useState(1);
   const [lyricsZoom, setLyricsZoom] = useState(3);
+  const [jukeboxTitle, setJukeboxTitle] = useState('');
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -61,6 +63,7 @@ function JukeboxInner() {
         if (s.artistRows !== undefined) setArtistRows(s.artistRows);
         if (s.stationRows !== undefined) setStationRows(s.stationRows);
         if (s.lyricsZoom !== undefined) setLyricsZoom(s.lyricsZoom);
+        if (s.jukeboxTitle !== undefined) setJukeboxTitle(s.jukeboxTitle);
       }
     } catch { /* ignore */ }
   }, []);
@@ -69,10 +72,10 @@ function JukeboxInner() {
   useEffect(() => {
     try {
       localStorage.setItem('jukebox-settings', JSON.stringify({
-        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom
+        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle
       }));
     } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -155,10 +158,10 @@ function JukeboxInner() {
 
   return (
     <div className="h-screen flex flex-col bg-background hero-gradient overflow-hidden">
-      <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
+      <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} jukeboxTitle={jukeboxTitle} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
-      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' ? 'overflow-hidden' : 'overflow-y-auto pb-32'}`}
+      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' || view === 'stats' ? 'overflow-hidden' : 'overflow-y-auto pb-32'}`}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
@@ -187,6 +190,7 @@ function JukeboxInner() {
           />
         )}
         {view === 'queue' && <QueueView onBack={goBack} />}
+        {view === 'stats' && <StatsView />}
         {view === 'settings' && (
           <SettingsView
             idleTimeout={idleTimeout}
@@ -207,6 +211,8 @@ function JukeboxInner() {
             onStationRowsChange={setStationRows}
             lyricsZoom={lyricsZoom}
             onLyricsZoomChange={setLyricsZoom}
+            jukeboxTitle={jukeboxTitle}
+            onJukeboxTitleChange={setJukeboxTitle}
           />
         )}
       </main>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Radio, Play, Loader2, Music2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
@@ -108,11 +108,9 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
   const [stations, setStations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
-  const { playQueue, setCurrentStationId } = usePlayer();
+  const { playQueue, setCurrentStationId, setCurrentStationName } = usePlayer();
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
   const [cardSize, setCardSize] = useState(200);
 
   useEffect(() => {
@@ -143,30 +141,47 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
     return () => ro.disconnect();
   }, [stations, stationRows]);
 
-  const checkScroll = () => {
+  // Infinite carousel: wrap scroll position when near edges
+  const scrollAnimatingRef = useRef(false);
+  const checkScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 10);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
-  };
+    if (!el || scrollAnimatingRef.current || stations.length === 0) return;
+    const cols = Math.ceil(stations.length / stationRows);
+    if (cols < 2) return;
+    // We triple the items. Middle third = original. Wrap if scrolling into first or last third.
+    const colWidth = cardSize + 12; // gap-3 = 12px
+    const oneSetWidth = cols * colWidth;
+    if (el.scrollLeft < colWidth) {
+      scrollAnimatingRef.current = true;
+      el.scrollLeft += oneSetWidth;
+      requestAnimationFrame(() => { scrollAnimatingRef.current = false; });
+    } else if (el.scrollLeft > oneSetWidth * 2 - el.clientWidth) {
+      scrollAnimatingRef.current = true;
+      el.scrollLeft -= oneSetWidth;
+      requestAnimationFrame(() => { scrollAnimatingRef.current = false; });
+    }
+  }, [stations.length, stationRows, cardSize]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    checkScroll();
     el.addEventListener('scroll', checkScroll, { passive: true });
-    const ro = new ResizeObserver(checkScroll);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener('scroll', checkScroll);
-      ro.disconnect();
-    };
-  }, [stations]);
+    return () => el.removeEventListener('scroll', checkScroll);
+  }, [checkScroll]);
+
+  // Center on middle set initially
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || stations.length === 0) return;
+    const cols = Math.ceil(stations.length / stationRows);
+    const colWidth = cardSize + 12;
+    el.scrollLeft = cols * colWidth;
+  }, [stations.length, stationRows, cardSize]);
 
   const scroll = (dir: 'left' | 'right') => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -(cardSize + 16) * 2 : (cardSize + 16) * 2, behavior: 'smooth' });
+    el.scrollBy({ left: dir === 'left' ? -(cardSize + 12) * 2 : (cardSize + 12) * 2, behavior: 'smooth' });
   };
 
   const handlePlayStation = async (station: any) => {
@@ -190,6 +205,7 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
       if (tracks?.length > 0) {
         playQueue(tracks);
         setCurrentStationId(stationId);
+        setCurrentStationName(station?.name ?? null);
         toast.success(`Playing ${station?.name ?? 'Station'}`);
         setTimeout(() => onNavigate('now-playing'), 500);
       } else {
@@ -236,15 +252,13 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
         <div className="flex items-center gap-2">
           <button
             onClick={() => scroll('left')}
-            disabled={!canScrollLeft}
-            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center hover:bg-secondary transition-colors"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
           <button
             onClick={() => scroll('right')}
-            disabled={!canScrollRight}
-            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center hover:bg-secondary transition-colors"
           >
             <ChevronRight className="w-5 h-5" />
           </button>
@@ -259,16 +273,17 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
           style={{ scrollSnapType: 'x mandatory' }}
         >
           {(() => {
-            // Chunk stations into columns of `stationRows` items
+            // Triple the stations for infinite carousel wrapping
+            const tripled = [...stations, ...stations, ...stations];
             const cols: any[][] = [];
-            for (let i = 0; i < stations.length; i += stationRows) {
-              cols.push(stations.slice(i, i + stationRows));
+            for (let i = 0; i < tripled.length; i += stationRows) {
+              cols.push(tripled.slice(i, i + stationRows));
             }
             return cols.map((col, ci) => (
               <div key={ci} className="flex flex-col gap-3 flex-shrink-0">
-                {col.map((station: any) => (
+                {col.map((station: any, si: number) => (
                   <StationCard
-                    key={station?.id}
+                    key={`${ci}-${si}-${station?.id}`}
                     station={station}
                     onPlay={() => handlePlayStation(station)}
                     isPlaying={playingStation === station?.id}

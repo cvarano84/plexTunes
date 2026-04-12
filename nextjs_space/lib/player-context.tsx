@@ -22,6 +22,7 @@ interface PlayerState {
   duration: number;
   volume: number;
   currentStationId: string | null;
+  currentStationName: string | null;
   queueIndex: number;
 }
 
@@ -54,6 +55,7 @@ interface PlayerContextType extends PlayerState {
   seek: (time: number) => void;
   setVolume: (vol: number) => void;
   setCurrentStationId: (id: string | null) => void;
+  setCurrentStationName: (name: string | null) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
   analyserNode: AnalyserNode | null;
   eqGains: EqGains;
@@ -81,6 +83,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [volume, setVolumeState] = useState(0.8);
   const [queueIndex, setQueueIndex] = useState(-1);
   const [currentStationId, setCurrentStationId] = useState<string | null>(null);
+  const [currentStationName, setCurrentStationName] = useState<string | null>(null);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [eqGains, setEqGains] = useState<EqGains>({ bass: 0, mid: 0, treble: 0 });
   const [eqPreset, setEqPresetState] = useState('flat');
@@ -401,6 +404,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         duration,
         volume,
         currentStationId,
+        currentStationName,
         queueIndex,
         playTrack,
         playQueue,
@@ -412,6 +416,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         seek,
         setVolume,
         setCurrentStationId,
+        setCurrentStationName,
         audioRef,
         analyserNode,
         eqGains,

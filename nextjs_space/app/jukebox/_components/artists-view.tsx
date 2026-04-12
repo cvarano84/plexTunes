@@ -171,7 +171,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       </div>
 
       {/* Search */}
-      <div className="relative mb-3 flex-shrink-0">
+      <div className="relative mb-2 flex-shrink-0">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <input
           type="text"
@@ -180,6 +180,23 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
           placeholder="Search artists..."
           className="w-full pl-12 pr-4 py-3 rounded-xl bg-secondary/70 border border-border/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-[clamp(0.875rem,1.3vw,1.125rem)]"
         />
+      </div>
+
+      {/* Alphabet quick-jump */}
+      <div className="flex items-center gap-[2px] mb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
+        {('#ABCDEFGHIJKLMNOPQRSTUVWXYZ').split('').map((letter) => (
+          <button
+            key={letter}
+            onClick={() => setSearch(letter === '#' ? '' : letter)}
+            className={`flex-shrink-0 w-[clamp(1.5rem,2vw,2.25rem)] h-[clamp(1.5rem,2vw,2.25rem)] rounded-md flex items-center justify-center text-[clamp(0.6rem,0.9vw,0.8rem)] font-bold transition-colors ${
+              (letter === '#' && !search) || (search && search.toUpperCase() === letter)
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary/50 text-muted-foreground active:bg-primary/60 active:text-foreground'
+            }`}
+          >
+            {letter === '#' ? 'All' : letter}
+          </button>
+        ))}
       </div>
 
       {loading && artists.length === 0 ? (

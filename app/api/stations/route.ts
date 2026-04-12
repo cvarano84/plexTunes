@@ -22,8 +22,14 @@ export async function GET() {
     });
 
     // Pre-fetch a pool of tracks for art collage generation (lightweight)
+    // Include tracks where EITHER the track thumb OR the album thumb is not null
     const allTracksWithArt = await prisma.cachedTrack.findMany({
-      where: { thumb: { not: null } },
+      where: {
+        OR: [
+          { thumb: { not: null } },
+          { album: { thumb: { not: null } } },
+        ],
+      },
       select: { thumb: true, artistName: true, year: true, genre: true, popularity: true, playCount: true,
         album: { select: { thumb: true, genre: true } } },
       take: 5000,

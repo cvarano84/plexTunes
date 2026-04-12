@@ -69,6 +69,9 @@ model CachedTrack {
   playCount       Int           @default(0)
   lastPlayedAt    DateTime?
   summary         String?
+  billboardPeak   Int?
+  billboardWeeks  Int?
+  billboardCheckedAt DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -78,6 +81,7 @@ model CachedTrack {
   @@index([year])
   @@index([popularity])
   @@index([playCount])
+  @@index([billboardPeak])
 }
 
 model Station {
