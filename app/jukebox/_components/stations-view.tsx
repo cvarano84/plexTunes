@@ -141,41 +141,59 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
     return () => ro.disconnect();
   }, [stations, stationRows]);
 
-  // Infinite carousel: wrap scroll position when near edges
-  const scrollAnimatingRef = useRef(false);
-  const checkScroll = useCallback(() => {
+  // Infinite carousel: debounced wrap after scrolling stops
+  const wrapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressWrapRef = useRef(false);
+
+  const wrapScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || scrollAnimatingRef.current || stations.length === 0) return;
+    if (!el || stations.length === 0 || suppressWrapRef.current) return;
     const cols = Math.ceil(stations.length / stationRows);
-    if (cols < 2) return;
-    // We triple the items. Middle third = original. Wrap if scrolling into first or last third.
-    const colWidth = cardSize + 12; // gap-3 = 12px
+    if (cols < 3) return;
+    const colWidth = cardSize + 12;
     const oneSetWidth = cols * colWidth;
-    if (el.scrollLeft < colWidth) {
-      scrollAnimatingRef.current = true;
+    // Check if near start or end of triple-rendered content
+    if (el.scrollLeft < colWidth * 0.5) {
+      suppressWrapRef.current = true;
+      el.style.scrollBehavior = 'auto';
       el.scrollLeft += oneSetWidth;
-      requestAnimationFrame(() => { scrollAnimatingRef.current = false; });
-    } else if (el.scrollLeft > oneSetWidth * 2 - el.clientWidth) {
-      scrollAnimatingRef.current = true;
+      el.style.scrollBehavior = '';
+      requestAnimationFrame(() => { suppressWrapRef.current = false; });
+    } else if (el.scrollLeft > oneSetWidth * 2 - el.clientWidth - colWidth * 0.5) {
+      suppressWrapRef.current = true;
+      el.style.scrollBehavior = 'auto';
       el.scrollLeft -= oneSetWidth;
-      requestAnimationFrame(() => { scrollAnimatingRef.current = false; });
+      el.style.scrollBehavior = '';
+      requestAnimationFrame(() => { suppressWrapRef.current = false; });
     }
   }, [stations.length, stationRows, cardSize]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.addEventListener('scroll', checkScroll, { passive: true });
-    return () => el.removeEventListener('scroll', checkScroll);
-  }, [checkScroll]);
+    const onScroll = () => {
+      if (wrapTimeoutRef.current) clearTimeout(wrapTimeoutRef.current);
+      wrapTimeoutRef.current = setTimeout(wrapScroll, 200);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (wrapTimeoutRef.current) clearTimeout(wrapTimeoutRef.current);
+    };
+  }, [wrapScroll]);
 
-  // Center on middle set initially
+  // Center on middle set initially (suppress wrap during initial positioning)
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || stations.length === 0) return;
+    suppressWrapRef.current = true;
     const cols = Math.ceil(stations.length / stationRows);
     const colWidth = cardSize + 12;
+    el.style.scrollBehavior = 'auto';
     el.scrollLeft = cols * colWidth;
+    el.style.scrollBehavior = '';
+    // Keep suppressed until after any momentum settles
+    setTimeout(() => { suppressWrapRef.current = false; }, 500);
   }, [stations.length, stationRows, cardSize]);
 
   const scroll = (dir: 'left' | 'right') => {
@@ -269,8 +287,7 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
       <div className="flex-1 flex items-center min-h-0">
         <div
           ref={scrollRef}
-          className="flex gap-3 overflow-x-auto scrollbar-none scroll-smooth w-full items-center"
-          style={{ scrollSnapType: 'x mandatory' }}
+          className="flex gap-3 overflow-x-auto scrollbar-none w-full items-center"
         >
           {(() => {
             // Triple the stations for infinite carousel wrapping

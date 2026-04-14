@@ -34,37 +34,26 @@ export async function GET(req: NextRequest) {
     const apiKey = process.env.ABACUSAI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: 'LLM API not configured' }, { status: 500 });
 
-    const prompt = `For the song "${track.title}" by ${track.artistName || 'unknown artist'}${track.year ? ` (${track.year})` : ''}, provide its Billboard Hot 100 chart performance. If this song was never on the Billboard Hot 100, respond with peak_position: null and weeks_on_chart: null. Only provide data you are confident about. Respond with raw JSON only.`;
+    const prompt = `For the song "${track.title}" by ${track.artistName || 'unknown artist'}${track.year ? ` (${track.year})` : ''}, provide its Billboard Hot 100 chart performance data. Return peak_position as the highest chart position (integer 1-100) and weeks_on_chart as total weeks spent on the chart (integer). If this song was never on the Billboard Hot 100 or you are not confident, return -1 for both values. Respond ONLY with a JSON object.`;
 
     const llmRes = await fetch('https://apps.abacus.ai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'gpt-4.1-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: 'You are a music chart data expert. Return only valid JSON with peak_position and weeks_on_chart as integers. Use -1 if the song was never charted.' },
+          { role: 'user', content: prompt },
+        ],
         max_tokens: 200,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'billboard_data',
-            strict: true,
-            schema: {
-              type: 'object',
-              properties: {
-                peak_position: { type: ['integer', 'null'] },
-                weeks_on_chart: { type: ['integer', 'null'] },
-              },
-              required: ['peak_position', 'weeks_on_chart'],
-              additionalProperties: false,
-            },
-          },
-        },
+        response_format: { type: 'json_object' },
       }),
     });
 
     if (!llmRes.ok) {
-      console.error('LLM API error:', llmRes.status);
-      return NextResponse.json({ error: 'LLM lookup failed' }, { status: 500 });
+      const errText = await llmRes.text().catch(() => '');
+      console.error('LLM API error:', llmRes.status, errText);
+      return NextResponse.json({ error: 'LLM lookup failed', status: llmRes.status }, { status: 500 });
     }
 
     const llmData = await llmRes.json();
@@ -74,11 +63,14 @@ export async function GET(req: NextRequest) {
       parsed = JSON.parse(content);
     } catch {
       console.error('Failed to parse LLM response:', content);
-      return NextResponse.json({ error: 'Parse error' }, { status: 500 });
+      return NextResponse.json({ error: 'Parse error', raw: content }, { status: 500 });
     }
 
-    const peak = typeof parsed?.peak_position === 'number' ? parsed.peak_position : null;
-    const weeks = typeof parsed?.weeks_on_chart === 'number' ? parsed.weeks_on_chart : null;
+    const rawPeak = typeof parsed?.peak_position === 'number' ? parsed.peak_position : -1;
+    const rawWeeks = typeof parsed?.weeks_on_chart === 'number' ? parsed.weeks_on_chart : -1;
+    // -1 means not charted or unknown
+    const peak = rawPeak > 0 ? rawPeak : null;
+    const weeks = rawWeeks > 0 ? rawWeeks : null;
 
     // Cache in DB
     await prisma.cachedTrack.update({

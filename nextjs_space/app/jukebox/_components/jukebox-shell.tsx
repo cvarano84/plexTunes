@@ -46,7 +46,7 @@ function JukeboxInner() {
 
   // Idle timer
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { currentTrack, isPlaying } = usePlayer();
+  const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue } = usePlayer();
 
   // Load settings from localStorage
   useEffect(() => {
@@ -129,6 +129,42 @@ function JukeboxInner() {
       })
       .catch(() => router?.push?.('/setup'));
   }, [router]);
+
+  // Publish playback state for mobile remote clients
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!currentTrack) return;
+      fetch('/api/remote/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentTrack,
+          isPlaying,
+          currentTime: 0, // approximate, updated on interval
+          queue: playerQueue.map(t => ({ title: t.title, artistName: t.artistName, thumb: t.thumb, albumTitle: t.albumTitle })),
+          currentStationName: null,
+        }),
+      }).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [currentTrack, isPlaying, playerQueue]);
+
+  // Poll for remote queue additions
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/remote/queue');
+        const data = await res?.json?.();
+        const actions = data?.actions ?? [];
+        for (const action of actions) {
+          if (action?.type === 'add_to_queue' && action?.payload) {
+            playerAddToQueue(action.payload);
+          }
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [playerAddToQueue]);
 
   const navigate = (newView: ViewType, opts?: { artistId?: string; albumId?: string }) => {
     setViewHistory(prev => [...(prev ?? []), { view, artistId: selectedArtistId, albumId: selectedAlbumId }]);

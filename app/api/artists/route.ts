@@ -11,8 +11,11 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams?.get?.('limit') ?? '50', 10);
     const skip = (page - 1) * limit;
 
+    const letter = searchParams?.get?.('letter') ?? '';
     const where: any = {};
-    if (search) {
+    if (letter) {
+      where.name = { startsWith: letter, mode: 'insensitive' };
+    } else if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 

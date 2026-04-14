@@ -1,12 +1,13 @@
 "use client";
 
-import React from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 import PlexImage from './plex-image';
 import AudioControls from './audio-controls';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface PlayerBarProps {
   onNavigate: (view: ViewType, opts?: any) => void;
@@ -31,6 +32,26 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
     seek,
     queue,
   } = usePlayer();
+
+  const [qrOpen, setQrOpen] = useState(false);
+  const [mobileUrl, setMobileUrl] = useState('');
+  const qrTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    // Build mobile URL from current page location
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      setMobileUrl(`${origin}/mobile`);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (qrOpen) {
+      if (qrTimerRef.current) clearTimeout(qrTimerRef.current);
+      qrTimerRef.current = setTimeout(() => setQrOpen(false), 15000);
+    }
+    return () => { if (qrTimerRef.current) clearTimeout(qrTimerRef.current); };
+  }, [qrOpen]);
 
   if (!currentTrack) return null;
 
@@ -128,6 +149,39 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
               </span>
             )}
           </button>
+
+          {/* Mobile remote QR button */}
+          <div className="relative">
+            <button
+              onClick={() => setQrOpen(prev => !prev)}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors"
+              title="Mobile remote"
+            >
+              <Smartphone className="w-5 h-5" />
+            </button>
+            <AnimatePresence>
+              {qrOpen && mobileUrl && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                  className="absolute bottom-14 right-0 z-[100] bg-card border border-border/40 rounded-xl p-4 shadow-2xl min-w-[220px]"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium">Mobile Remote</span>
+                    <button onClick={() => setQrOpen(false)} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-secondary transition-colors">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg flex items-center justify-center">
+                    <QRCodeSVG value={mobileUrl} size={160} level="M" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center mt-2 break-all">{mobileUrl}</p>
+                  <p className="text-[10px] text-muted-foreground text-center mt-1">Scan with your phone (same network)</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </motion.div>

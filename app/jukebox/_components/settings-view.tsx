@@ -150,6 +150,131 @@ function TripleSlider({ value, onChange }: { value: string; onChange: (val: stri
   );
 }
 
+function MetadataDashboard() {
+  const [metaStatus, setMetaStatus] = React.useState<any>(null);
+  const [metaLoading, setMetaLoading] = React.useState(true);
+  const [scanningType, setScanningType] = React.useState<string | null>(null);
+
+  const loadStatus = React.useCallback(() => {
+    setMetaLoading(true);
+    fetch('/api/metadata/status')
+      .then(r => r?.json?.())
+      .then(data => { setMetaStatus(data); setMetaLoading(false); })
+      .catch(() => setMetaLoading(false));
+  }, []);
+
+  React.useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const triggerScan = async (type: string) => {
+    setScanningType(type);
+    try {
+      if (type === 'library') {
+        await fetch('/api/plex/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullSync: true }) });
+      } else if (type === 'popularity') {
+        await fetch('/api/popularity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batchSize: 50 }) });
+      }
+      // Refresh status after a short delay
+      setTimeout(loadStatus, 2000);
+    } catch { /* ignore */ }
+    setScanningType(null);
+  };
+
+  const metaItems = metaStatus?.metadata ? [
+    { key: 'popularity', label: 'Track Popularity', ...metaStatus.metadata.popularity },
+    { key: 'trackSummary', label: 'Track Summaries', ...metaStatus.metadata.trackSummary },
+    { key: 'billboard', label: 'Billboard Data', ...metaStatus.metadata.billboard },
+    { key: 'artistBio', label: 'Artist Bios', ...metaStatus.metadata.artistBio },
+  ] : [];
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+      <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+        <Database className="w-5 h-5 text-accent" />
+        Metadata Dashboard
+      </h3>
+      {metaLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground p-4">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading metadata status...
+        </div>
+      ) : metaStatus ? (
+        <div className="space-y-4">
+          {/* Library overview */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Tracks', value: metaStatus.library?.totalTracks ?? 0 },
+              { label: 'Artists', value: metaStatus.library?.totalArtists ?? 0 },
+              { label: 'Albums', value: metaStatus.library?.totalAlbums ?? 0 },
+            ].map(item => (
+              <div key={item.label} className="p-3 rounded-lg bg-secondary/40 border border-border/20 text-center">
+                <p className="text-2xl font-bold font-display">{item.value.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+              </div>
+            ))}
+          </div>
+          {metaStatus.library?.lastSync && (
+            <p className="text-xs text-muted-foreground">
+              Last sync: {new Date(metaStatus.library.lastSync).toLocaleString()}
+              {metaStatus.library.syncInProgress && (
+                <span className="ml-2 text-amber-400">(sync in progress)</span>
+              )}
+            </p>
+          )}
+
+          {/* Metadata fill rates */}
+          <div className="space-y-3">
+            {metaItems.map(item => (
+              <div key={item.key} className="p-3 rounded-lg bg-secondary/40 border border-border/20">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-xs text-muted-foreground">{item.filled ?? 0} / {item.total ?? 0} ({item.pct ?? 0}%)</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${item.pct ?? 0}%`,
+                      background: (item.pct ?? 0) > 70 ? '#22c55e' : (item.pct ?? 0) > 30 ? '#f59e0b' : '#ef4444',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Scan triggers */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => triggerScan('library')}
+              disabled={!!scanningType}
+              className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground active:bg-primary/80 transition-colors disabled:opacity-50"
+            >
+              {scanningType === 'library' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Re-sync Library
+            </button>
+            <button
+              onClick={() => triggerScan('popularity')}
+              disabled={!!scanningType}
+              className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-secondary text-secondary-foreground active:bg-secondary/80 transition-colors disabled:opacity-50"
+            >
+              {scanningType === 'popularity' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
+              Refresh Popularity
+            </button>
+            <button
+              onClick={loadStatus}
+              disabled={metaLoading}
+              className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-secondary text-secondary-foreground active:bg-secondary/80 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className="w-4 h-4" /> Refresh Status
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground p-4">Unable to load metadata status.</p>
+      )}
+    </motion.div>
+  );
+}
+
 export default function SettingsView({
   idleTimeout, onIdleTimeoutChange,
   eqBands, onEqBandsChange,
@@ -1017,6 +1142,9 @@ export default function SettingsView({
           )}
         </div>
       </motion.div>
+
+      {/* Metadata Dashboard */}
+      <MetadataDashboard />
 
       {/* Plex Config */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>

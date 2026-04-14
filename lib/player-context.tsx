@@ -44,6 +44,21 @@ export const EQ_PRESETS: Record<string, EqGains> = {
   'electronic': { bass: 5, mid: -2, treble: 4 },
 };
 
+export const EQ_10BAND_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export const EQ_10BAND_LABELS = ['31', '62', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
+
+export const EQ_10BAND_PRESETS: Record<string, number[]> = {
+  flat:          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  rock:          [4, 3, 1, 0, -1, 1, 2, 3, 4, 3],
+  pop:           [0, 1, 3, 4, 3, 1, 0, 1, 2, 2],
+  jazz:          [3, 2, 0, 1, -1, -1, 0, 1, 2, 3],
+  classical:     [3, 2, 0, 0, 0, 0, 0, 1, 2, 3],
+  'bass boost':  [8, 6, 4, 2, 0, 0, 0, 0, 0, 0],
+  'treble boost':[0, 0, 0, 0, 0, 0, 2, 4, 6, 8],
+  vocal:         [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1],
+  electronic:    [5, 4, 2, 0, -2, -1, 2, 4, 5, 4],
+};
+
 interface PlayerContextType extends PlayerState {
   playTrack: (track: TrackInfo) => void;
   playQueue: (tracks: TrackInfo[], startIndex?: number) => void;
@@ -62,6 +77,12 @@ interface PlayerContextType extends PlayerState {
   setEqGain: (band: keyof EqGains, value: number) => void;
   setEqPreset: (name: string) => void;
   eqPreset: string;
+  eqMode: 'simple' | 'advanced';
+  setEqMode: (mode: 'simple' | 'advanced') => void;
+  advancedEqGains: number[];
+  setAdvancedEqGain: (index: number, value: number) => void;
+  setAdvancedEqPreset: (name: string) => void;
+  advancedEqPreset: string;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -87,12 +108,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [eqGains, setEqGains] = useState<EqGains>({ bass: 0, mid: 0, treble: 0 });
   const [eqPreset, setEqPresetState] = useState('flat');
+  const [eqMode, setEqModeState] = useState<'simple' | 'advanced'>('simple');
+  const [advancedEqGains, setAdvancedEqGains] = useState<number[]>(new Array(10).fill(0));
+  const [advancedEqPreset, setAdvancedEqPresetState] = useState('flat');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fetchingMoreRef = useRef(false);
-  // Persistent Web Audio refs - survive across component mounts/unmounts
+  // Persistent Web Audio refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const eqNodesRef = useRef<{ bass: BiquadFilterNode; mid: BiquadFilterNode; treble: BiquadFilterNode } | null>(null);
+  const advancedEqNodesRef = useRef<BiquadFilterNode[] | null>(null);
 
   // Initialize Web Audio API once the audio element exists
   // This MUST live in the provider so it persists across view changes
@@ -123,34 +148,71 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         trebleFilter.frequency.value = 4000;
         trebleFilter.gain.value = 0;
 
+        // Create 10-band peaking filters
+        const advFilters: BiquadFilterNode[] = EQ_10BAND_FREQS.map((freq) => {
+          const f = ctx.createBiquadFilter();
+          f.type = 'peaking';
+          f.frequency.value = freq;
+          f.Q.value = 1.4;
+          f.gain.value = 0;
+          return f;
+        });
+
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.7;
 
-        // Chain: source -> bass -> mid -> treble -> analyser -> destination
+        // Chain: source -> bass -> mid -> treble -> [10 bands] -> analyser -> destination
         source.connect(bassFilter);
         bassFilter.connect(midFilter);
         midFilter.connect(trebleFilter);
-        trebleFilter.connect(analyser);
+        let lastNode: AudioNode = trebleFilter;
+        for (const af of advFilters) {
+          lastNode.connect(af);
+          lastNode = af;
+        }
+        lastNode.connect(analyser);
         analyser.connect(ctx.destination);
 
         audioContextRef.current = ctx;
         sourceNodeRef.current = source;
         eqNodesRef.current = { bass: bassFilter, mid: midFilter, treble: trebleFilter };
+        advancedEqNodesRef.current = advFilters;
         setAnalyserNode(analyser);
 
         // Load saved EQ from localStorage
         try {
           const savedEq = localStorage.getItem('jukebox_eq');
           const savedPreset = localStorage.getItem('jukebox_eq_preset');
+          const savedMode = localStorage.getItem('jukebox_eq_mode');
+          const savedAdvEq = localStorage.getItem('jukebox_eq_adv');
+          const savedAdvPreset = localStorage.getItem('jukebox_eq_adv_preset');
+          const mode = savedMode === 'advanced' ? 'advanced' : 'simple';
+          setEqModeState(mode);
+
           if (savedEq) {
             const parsed = JSON.parse(savedEq);
-            bassFilter.gain.value = parsed.bass ?? 0;
-            midFilter.gain.value = parsed.mid ?? 0;
-            trebleFilter.gain.value = parsed.treble ?? 0;
+            if (mode === 'simple') {
+              bassFilter.gain.value = parsed.bass ?? 0;
+              midFilter.gain.value = parsed.mid ?? 0;
+              trebleFilter.gain.value = parsed.treble ?? 0;
+            }
             setEqGains(parsed);
           }
           if (savedPreset) setEqPresetState(savedPreset);
+
+          if (savedAdvEq) {
+            const advGains = JSON.parse(savedAdvEq);
+            if (mode === 'advanced') {
+              advFilters.forEach((f, i) => { f.gain.value = advGains[i] ?? 0; });
+              // Zero out 3-band in advanced mode
+              bassFilter.gain.value = 0;
+              midFilter.gain.value = 0;
+              trebleFilter.gain.value = 0;
+            }
+            setAdvancedEqGains(advGains);
+          }
+          if (savedAdvPreset) setAdvancedEqPresetState(savedAdvPreset);
         } catch { /* ignore */ }
 
         if (ctx.state === 'suspended') {
@@ -244,6 +306,60 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('jukebox_eq_preset', name);
     } catch { /* ignore */ }
   }, []);
+
+  const setAdvancedEqGain = useCallback((index: number, value: number) => {
+    const nodes = advancedEqNodesRef.current;
+    if (nodes && nodes[index]) {
+      nodes[index].gain.value = value;
+    }
+    setAdvancedEqGains(prev => {
+      const updated = [...prev];
+      updated[index] = value;
+      try { localStorage.setItem('jukebox_eq_adv', JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+    setAdvancedEqPresetState('custom');
+    try { localStorage.setItem('jukebox_eq_adv_preset', 'custom'); } catch { /* ignore */ }
+  }, []);
+
+  const setAdvancedEqPreset = useCallback((name: string) => {
+    const preset = EQ_10BAND_PRESETS[name];
+    if (!preset) return;
+    const nodes = advancedEqNodesRef.current;
+    if (nodes) {
+      preset.forEach((val, i) => { if (nodes[i]) nodes[i].gain.value = val; });
+    }
+    setAdvancedEqGains([...preset]);
+    setAdvancedEqPresetState(name);
+    try {
+      localStorage.setItem('jukebox_eq_adv', JSON.stringify(preset));
+      localStorage.setItem('jukebox_eq_adv_preset', name);
+    } catch { /* ignore */ }
+  }, []);
+
+  const setEqMode = useCallback((mode: 'simple' | 'advanced') => {
+    setEqModeState(mode);
+    try { localStorage.setItem('jukebox_eq_mode', mode); } catch { /* ignore */ }
+    const simpleNodes = eqNodesRef.current;
+    const advNodes = advancedEqNodesRef.current;
+    if (mode === 'simple') {
+      // Restore 3-band, zero out 10-band
+      if (simpleNodes) {
+        simpleNodes.bass.gain.value = eqGains.bass;
+        simpleNodes.mid.gain.value = eqGains.mid;
+        simpleNodes.treble.gain.value = eqGains.treble;
+      }
+      if (advNodes) advNodes.forEach(n => { n.gain.value = 0; });
+    } else {
+      // Restore 10-band, zero out 3-band
+      if (simpleNodes) {
+        simpleNodes.bass.gain.value = 0;
+        simpleNodes.mid.gain.value = 0;
+        simpleNodes.treble.gain.value = 0;
+      }
+      if (advNodes) advNodes.forEach((n, i) => { n.gain.value = advancedEqGains[i] ?? 0; });
+    }
+  }, [eqGains, advancedEqGains]);
 
   const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
     if (fetchingMoreRef.current) return [];
@@ -423,6 +539,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setEqGain,
         setEqPreset,
         eqPreset,
+        eqMode,
+        setEqMode,
+        advancedEqGains,
+        setAdvancedEqGain,
+        setAdvancedEqPreset,
+        advancedEqPreset,
       }}
     >
       {children}

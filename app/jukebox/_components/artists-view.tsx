@@ -11,11 +11,14 @@ interface ArtistsViewProps {
   artistRows?: number;
 }
 
+const LETTERS = ['All', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
+
 export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewProps) {
   const [artists, setArtists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeLetter, setActiveLetter] = useState('All');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [total, setTotal] = useState(0);
@@ -53,15 +56,13 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     el.scrollBy({ left: dir === 'left' ? -(itemSize + 12) * 3 : (itemSize + 12) * 3, behavior: 'smooth' });
   };
 
-  // Calculate item size based on available height and rows
   useEffect(() => {
     const calcSize = () => {
       const container = containerRef.current;
       if (!container) return;
-      // Available height for the grid (subtract search bar ~60px, header ~50px, gaps)
       const available = container.clientHeight;
-      const gapSize = 12; // gap between rows
-      const labelHeight = 40; // text below each circle
+      const gapSize = 12;
+      const labelHeight = 40;
       const totalGaps = (artistRows - 1) * gapSize;
       const perRow = Math.max(80, Math.floor((available - totalGaps) / artistRows) - labelHeight);
       setItemSize(Math.min(200, perRow));
@@ -72,7 +73,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     return () => ro.disconnect();
   }, [artistRows]);
 
-  const fetchArtists = useCallback(async (pageNum: number, searchStr: string, append: boolean) => {
+  const fetchArtists = useCallback(async (pageNum: number, searchStr: string, letterFilter: string, append: boolean) => {
     if (append) {
       setLoadingMore(true);
     } else {
@@ -82,8 +83,12 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       const params = new URLSearchParams({
         page: pageNum.toString(),
         limit: '100',
-        ...(searchStr ? { search: searchStr } : {}),
       });
+      if (letterFilter && letterFilter !== 'All') {
+        params.set('letter', letterFilter);
+      } else if (searchStr) {
+        params.set('search', searchStr);
+      }
       const res = await fetch(`/api/artists?${params}`);
       const data = await res?.json?.();
       const newArtists = data?.artists ?? [];
@@ -94,6 +99,8 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
         setArtists(prev => [...prev, ...newArtists]);
       } else {
         setArtists(newArtists);
+        // Scroll back to start when changing letter/search
+        if (scrollRef.current) scrollRef.current.scrollLeft = 0;
       }
     } catch {
       if (!append) setArtists([]);
@@ -103,40 +110,47 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     }
   }, []);
 
-  // Initial load and search changes
+  // Fetch when search or letter changes
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
       setPage(1);
       setHasMore(true);
-      fetchArtists(1, search, false);
+      fetchArtists(1, search, activeLetter, false);
     }, search ? 300 : 0);
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [search, fetchArtists]);
+  }, [search, activeLetter, fetchArtists]);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !loading && !loadingMore) {
           const nextPage = page + 1;
           setPage(nextPage);
-          fetchArtists(nextPage, search, true);
+          fetchArtists(nextPage, search, activeLetter, true);
         }
       },
       { root: scrollRef.current, rootMargin: '400px', threshold: 0 }
     );
-
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore, page, search, fetchArtists]);
+  }, [hasMore, loading, loadingMore, page, search, activeLetter, fetchArtists]);
 
-  // Chunk artists into columns of `artistRows` items for the grid
+  const handleLetterTap = (letter: string) => {
+    setActiveLetter(letter);
+    setSearch('');
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setActiveLetter('All');
+  };
+
   const columns: any[][] = [];
   for (let i = 0; i < artists.length; i += artistRows) {
     columns.push(artists.slice(i, i + artistRows));
@@ -156,14 +170,14 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
           <button
             onClick={() => scrollNav('left')}
             disabled={!canScrollLeft}
-            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 transition-colors"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
           <button
             onClick={() => scrollNav('right')}
             disabled={!canScrollRight}
-            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 hover:bg-secondary transition-colors"
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center disabled:opacity-20 transition-colors"
           >
             <ChevronRight className="w-5 h-5" />
           </button>
@@ -176,25 +190,25 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
         <input
           type="text"
           value={search}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e?.target?.value ?? '')}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSearchChange(e?.target?.value ?? '')}
           placeholder="Search artists..."
           className="w-full pl-12 pr-4 py-3 rounded-xl bg-secondary/70 border border-border/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-[clamp(0.875rem,1.3vw,1.125rem)]"
         />
       </div>
 
-      {/* Alphabet quick-jump */}
-      <div className="flex items-center gap-[2px] mb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
-        {('#ABCDEFGHIJKLMNOPQRSTUVWXYZ').split('').map((letter) => (
+      {/* Alphabet quick-jump - auto scales to full width */}
+      <div className="flex items-center mb-2 flex-shrink-0 w-full">
+        {LETTERS.map((letter) => (
           <button
             key={letter}
-            onClick={() => setSearch(letter === '#' ? '' : letter)}
-            className={`flex-shrink-0 w-[clamp(1.5rem,2vw,2.25rem)] h-[clamp(1.5rem,2vw,2.25rem)] rounded-md flex items-center justify-center text-[clamp(0.6rem,0.9vw,0.8rem)] font-bold transition-colors ${
-              (letter === '#' && !search) || (search && search.toUpperCase() === letter)
+            onClick={() => handleLetterTap(letter)}
+            className={`flex-1 min-w-0 h-[clamp(1.75rem,2.2vw,2.5rem)] rounded-md flex items-center justify-center text-[clamp(0.55rem,0.85vw,0.75rem)] font-bold transition-colors ${
+              activeLetter === letter
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-secondary/50 text-muted-foreground active:bg-primary/60 active:text-foreground'
             }`}
           >
-            {letter === '#' ? 'All' : letter}
+            {letter}
           </button>
         ))}
       </div>
@@ -224,7 +238,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
                     className="group text-center flex-shrink-0"
                   >
                     <div
-                      className="relative rounded-full overflow-hidden bg-secondary mb-1 mx-auto group-hover:ring-2 group-hover:ring-primary/50 transition-all"
+                      className="relative rounded-full overflow-hidden bg-secondary mb-1 mx-auto transition-all"
                       style={{ width: itemSize, height: itemSize }}
                     >
                       <PlexImage thumb={artist?.thumb} alt={artist?.name ?? 'Artist'} />
@@ -237,7 +251,6 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
                 ))}
               </div>
             ))}
-            {/* Sentinel for infinite scroll */}
             <div ref={sentinelRef} className="flex-shrink-0 w-4 h-full" />
             {loadingMore && (
               <div className="flex-shrink-0 flex items-center justify-center w-[100px]">
