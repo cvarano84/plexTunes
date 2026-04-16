@@ -442,7 +442,7 @@ export default function MobilePage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 min-h-0 ${tab === 'artists' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
 
         {/* ════════ NOW PLAYING TAB ════════ */}
         {tab === 'playing' && (
@@ -575,11 +575,11 @@ export default function MobilePage() {
 
         {/* ════════ ARTISTS TAB ════════ */}
         {tab === 'artists' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col flex-1 min-h-0">
             {artistBrowse === 'list' && (
-              <div className="flex flex-col h-full">
-                {/* Artist list — fills available space */}
-                <div ref={artistListRef} className="flex-1 overflow-y-auto px-4 pt-2 pb-2">
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* Artist list — fills available space, scrolls independently */}
+                <div ref={artistListRef} className="flex-1 overflow-y-auto min-h-0 px-4 pt-2 pb-2">
                   {artistsLoading ? (
                     <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
                   ) : artists.length > 0 ? (

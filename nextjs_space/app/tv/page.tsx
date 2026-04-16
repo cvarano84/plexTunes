@@ -2,7 +2,8 @@
 export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Music2 } from 'lucide-react';
+import { Music2, Settings } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 /* ─── Types ──────────────────────────────────────── */
 interface NowPlayingData {
@@ -53,14 +54,14 @@ function PlexImg({ thumb, alt, className }: { thumb: string | null; alt: string;
 /* ─── Animated Background (standalone, no player-context) ─── */
 type BgStyle = 'aurora' | 'nebula' | 'gradient-flow';
 const BG_STYLES: BgStyle[] = ['aurora', 'nebula', 'gradient-flow'];
+const BG_LABELS: Record<string, string> = { 'auto': 'Auto Cycle', 'aurora': 'Aurora', 'nebula': 'Nebula', 'gradient-flow': 'Gradient Flow', 'none': 'None' };
 
-function TVBackground({ energy }: { energy: number }) {
+function TVBackground({ energy, mode = 'auto' }: { energy: number; mode?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
-  const styleRef = useRef<BgStyle>(BG_STYLES[0]);
-  const styleTimerRef = useRef(0);
 
   useEffect(() => {
+    if (mode === 'none') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -77,10 +78,14 @@ function TVBackground({ energy }: { energy: number }) {
       const t = performance.now();
       const e = energy;
 
-      // Rotate style every 60 seconds
-      const styleIdx = Math.floor(t / 60000) % BG_STYLES.length;
-      styleRef.current = BG_STYLES[styleIdx];
-      const style = styleRef.current;
+      // Use fixed style or auto-cycle every 60s
+      let style: BgStyle;
+      if (mode === 'auto') {
+        const styleIdx = Math.floor(t / 60000) % BG_STYLES.length;
+        style = BG_STYLES[styleIdx];
+      } else {
+        style = mode as BgStyle;
+      }
 
       if (style === 'aurora') {
         ctx.fillStyle = 'rgba(0,0,0,0.05)';
@@ -133,7 +138,9 @@ function TVBackground({ energy }: { energy: number }) {
     };
     frameRef.current = requestAnimationFrame(loop);
     return () => { running = false; cancelAnimationFrame(frameRef.current); window.removeEventListener('resize', resize); };
-  }, [energy]);
+  }, [energy, mode]);
+
+  if (mode === 'none') return null;
 
   return (
     <>
@@ -233,6 +240,24 @@ export default function TVPage() {
   const [localTime, setLocalTime] = useState(0);
   const lastTrackRef = useRef<string>('');
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Background setting (persisted to localStorage)
+  const [bgMode, setBgMode] = useState<string>('auto');
+  const [showSettings, setShowSettings] = useState(false);
+  const [mobileUrl, setMobileUrl] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tv-bg-mode');
+      if (saved) setBgMode(saved);
+      setMobileUrl(`${window.location.origin}/mobile`);
+    }
+  }, []);
+
+  const changeBgMode = useCallback((mode: string) => {
+    setBgMode(mode);
+    if (typeof window !== 'undefined') localStorage.setItem('tv-bg-mode', mode);
+  }, []);
 
   // Audio streaming
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -431,12 +456,32 @@ export default function TVPage() {
   if (!track) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center text-white">
-        <TVBackground energy={0.2} />
+        <TVBackground energy={0.2} mode={bgMode} />
         <div className="relative z-10 flex flex-col items-center">
           <Music2 className="w-24 h-24 text-zinc-700 mb-6" />
           <h1 className="text-4xl font-bold text-zinc-500">HomeBarr Tunes</h1>
           <p className="text-xl text-zinc-600 mt-2">Waiting for playback...</p>
+          {mobileUrl && (
+            <div className="mt-6 flex flex-col items-center gap-2">
+              <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={mobileUrl} size={100} /></div>
+              <p className="text-xs text-zinc-600">Scan to open mobile remote</p>
+            </div>
+          )}
         </div>
+        {/* Settings gear */}
+        <button onClick={() => setShowSettings(!showSettings)} className="fixed top-4 right-4 z-20 w-10 h-10 rounded-full bg-zinc-900/60 flex items-center justify-center hover:bg-zinc-800/80 transition-colors">
+          <Settings className="w-5 h-5 text-zinc-400" />
+        </button>
+        {showSettings && (
+          <div className="fixed top-16 right-4 z-20 bg-zinc-900/95 border border-zinc-700/50 rounded-xl p-4 w-56 space-y-2">
+            <p className="text-xs font-medium text-zinc-400 mb-2">Background Effect</p>
+            {['auto', ...BG_STYLES, 'none'].map(s => (
+              <button key={s} onClick={() => changeBgMode(s)}
+                className={`w-full text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${bgMode === s ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'}`}
+              >{BG_LABELS[s] ?? s}</button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -444,7 +489,7 @@ export default function TVPage() {
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden select-none">
       {/* Animated background */}
-      <TVBackground energy={audioEnergy} />
+      <TVBackground energy={audioEnergy} mode={bgMode} />
 
       {/* Main content: 3 columns — Art | Lyrics | Queue */}
       <div className="flex-1 flex min-h-0 relative z-10">
@@ -546,10 +591,35 @@ export default function TVPage() {
         </div>
       </div>
 
-      {/* Bottom: EQ + Progress bar */}
+      {/* Settings gear (top-right) */}
+      <button onClick={() => setShowSettings(!showSettings)} className="fixed top-4 right-4 z-20 w-10 h-10 rounded-full bg-zinc-900/60 flex items-center justify-center hover:bg-zinc-800/80 transition-colors">
+        <Settings className="w-5 h-5 text-zinc-400" />
+      </button>
+      {showSettings && (
+        <div className="fixed top-16 right-4 z-20 bg-zinc-900/95 border border-zinc-700/50 rounded-xl p-4 w-56 space-y-2">
+          <p className="text-xs font-medium text-zinc-400 mb-2">Background Effect</p>
+          {['auto', ...BG_STYLES, 'none'].map(s => (
+            <button key={s} onClick={() => changeBgMode(s)}
+              className={`w-full text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${bgMode === s ? 'bg-purple-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            >{BG_LABELS[s] ?? s}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom: QR + EQ + Progress bar */}
       <div className="flex-shrink-0 px-6 pb-4 relative z-10 space-y-2">
-        {/* LED Equalizer */}
-        <TVEqualizer analyserNode={analyserNode} isPlaying={np?.isPlaying ?? false} />
+        {/* QR code + EQ row */}
+        <div className="flex items-end gap-4">
+          <div className="flex-1">
+            <TVEqualizer analyserNode={analyserNode} isPlaying={np?.isPlaying ?? false} />
+          </div>
+          {mobileUrl && (
+            <div className="flex flex-col items-center gap-1 flex-shrink-0">
+              <div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={mobileUrl} size={56} /></div>
+              <p className="text-[9px] text-zinc-600">Mobile</p>
+            </div>
+          )}
+        </div>
         {/* Progress */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 tabular-nums w-12 text-right">{formatTime(localTime)}</span>

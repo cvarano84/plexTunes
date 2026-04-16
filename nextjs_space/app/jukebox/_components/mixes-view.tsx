@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Disc3, Play, Loader2, Music2, Plus, Pencil, Trash2, X, Save, Check, Radio, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
@@ -15,18 +15,28 @@ interface MixesViewProps {
 }
 
 /* ── Mix Card (matches station card styling) ── */
-function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNames, artistThumbs }: {
+function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNames, artistThumbs, stationArtMap }: {
   mix: any; onPlay: () => void; onEdit: () => void; onDelete: () => void;
   isPlaying: boolean; cardSize: number; stationNames: Record<string, string>;
   artistThumbs: Record<string, string | null>;
+  stationArtMap: Record<string, string[]>;
 }) {
   const labelSize = cardSize > 400 ? 'text-2xl' : cardSize > 300 ? 'text-xl' : cardSize > 250 ? 'text-lg' : 'text-base';
   const subSize = cardSize > 400 ? 'text-base' : cardSize > 300 ? 'text-sm' : 'text-xs';
   const stationCount = mix?.stationIds?.length ?? 0;
   const artistCount = mix?.artistIds?.length ?? 0;
 
-  // Build a sample art array from artist thumbs
-  const sampleArt = (mix?.artistIds ?? []).map((id: string) => artistThumbs[id]).filter(Boolean);
+  // Build a sample art array from artist thumbs, fall back to station art
+  let sampleArt = (mix?.artistIds ?? []).map((id: string) => artistThumbs[id]).filter(Boolean);
+  if (sampleArt.length === 0 && stationCount > 0) {
+    const stationArts: string[] = [];
+    (mix.stationIds ?? []).forEach((sid: string) => {
+      (stationArtMap[sid] ?? []).forEach((url: string) => {
+        if (!stationArts.includes(url)) stationArts.push(url);
+      });
+    });
+    sampleArt = stationArts;
+  }
   const useGrid3 = sampleArt.length >= 9;
   const useGrid2 = sampleArt.length >= 4;
   const gridCols = useGrid3 ? 3 : 2;
@@ -95,6 +105,12 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const [playingMix, setPlayingMix] = useState<string | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [stations, setStations] = useState<any[]>([]);
+  // Map station ID to sampleArt URLs for mix cover art fallback
+  const stationArtMap = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    stations.forEach((s: any) => { m[s.id] = s.sampleArt ?? []; });
+    return m;
+  }, [stations]);
   const [allArtists, setAllArtists] = useState<any[]>([]);
   const [artistsLoading, setArtistsLoading] = useState(false);
   const [artistSearch, setArtistSearch] = useState('');
@@ -314,7 +330,8 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
+        {/* Top section: name, stations, toggle — compact, no scroll */}
+        <div className="flex-shrink-0 space-y-3">
           {/* Name */}
           <div>
             <label className="text-sm font-medium mb-1 block">Mix Name</label>
@@ -348,9 +365,10 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
             </button>
             <span className="text-sm">Popular tracks only</span>
           </div>
+        </div>
 
-          {/* Artist selection grid */}
-          <div className="flex flex-col min-h-0" style={{ height: '50%' }}>
+        {/* Artist selection grid — fills ALL remaining space */}
+        <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1 flex-shrink-0">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" /> Emphasized Artists
@@ -502,6 +520,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
                       cardSize={cardSize}
                       stationNames={stationNames}
                       artistThumbs={artistThumbs}
+                      stationArtMap={stationArtMap}
                     />
                   ))}
                 </div>
