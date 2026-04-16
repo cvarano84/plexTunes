@@ -1,0 +1,165 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/plex_jukebox/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model PlexConfig {
+  id        String   @id @default("default")
+  serverUrl String
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CachedArtist {
+  id            String         @id
+  ratingKey     String         @unique
+  name          String
+  thumb         String?
+  summary       String?
+  addedAt       Int?
+  cachedTracks  CachedTrack[]
+  cachedAlbums  CachedAlbum[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([name])
+}
+
+model CachedAlbum {
+  id            String         @id
+  ratingKey     String         @unique
+  title         String
+  year          Int?
+  thumb         String?
+  artistId      String
+  artist        CachedArtist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  genre         String?
+  cachedTracks  CachedTrack[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([artistId])
+  @@index([year])
+}
+
+model CachedTrack {
+  id              String        @id
+  ratingKey       String        @unique
+  title           String
+  duration        Int?
+  trackNumber     Int?
+  year            Int?
+  genre           String?
+  artistId        String
+  artist          CachedArtist  @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  artistName      String?
+  albumId         String
+  album           CachedAlbum   @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  albumTitle      String?
+  thumb           String?
+  mediaKey        String?
+  popularity      Int?
+  spotifyChecked  Boolean       @default(false)
+  playCount       Int           @default(0)
+  lastPlayedAt    DateTime?
+  summary         String?
+  billboardPeak   Int?
+  billboardWeeks  Int?
+  billboardCheckedAt DateTime?
+  bpm             Float?
+  bpmChecked      Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([artistId])
+  @@index([albumId])
+  @@index([genre])
+  @@index([year])
+  @@index([popularity])
+  @@index([playCount])
+  @@index([billboardPeak])
+}
+
+model Station {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  decade      String?
+  genre       String?
+  imageUrl    String?
+  trackCount  Int      @default(0)
+  isActive    Boolean  @default(true)
+  stationType String   @default("standard")
+  minPopularity Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([decade, genre])
+}
+
+model LibrarySyncStatus {
+  id             String   @id @default("default")
+  lastSyncAt     DateTime?
+  totalArtists   Int      @default(0)
+  totalAlbums    Int      @default(0)
+  totalTracks    Int      @default(0)
+  syncInProgress Boolean  @default(false)
+  syncProgress   Int      @default(0)
+  syncMessage    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model NowPlayingState {
+  id        String   @id @default("default")
+  state     String
+  updatedAt DateTime @updatedAt
+}
+
+model RemoteAction {
+  id        String   @id @default(cuid())
+  type      String
+  payload   String
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model JukeboxSettings {
+  id                  String   @id @default("default")
+  idleTimeout         Int      @default(30)
+  eqBands             Int      @default(32)
+  eqColorScheme       String   @default("purple")
+  previousTrackCount  Int      @default(3)
+  keyboardSize        String   @default("xxl")
+  columnLayout        String   @default("custom:30,45,25")
+  artistRows          Int      @default(4)
+  stationRows         Int      @default(3)
+  lyricsZoom          Int      @default(3)
+  jukeboxTitle        String   @default("")
+  stationQueueSize    Int      @default(5)
+  eqBarHeight         Int      @default(96)
+  artistBioHeight     Int      @default(20)
+  artistAlbumHeight   Int      @default(55)
+  artistSimilarHeight Int      @default(25)
+  artistTrackWidth    Int      @default(25)
+  sweetFades          Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+}
+
+model Mix {
+  id              String   @id @default(cuid())
+  name            String
+  stationIds      String[] @default([])
+  artistIds       String[] @default([])
+  popularOnly     Boolean  @default(true)
+  imageUrl        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
