@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Music2, Settings } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 
 /* ─── Types ──────────────────────────────────────── */
 interface NowPlayingData {
@@ -49,6 +49,36 @@ function PlexImg({ thumb, alt, className }: { thumb: string | null; alt: string;
   }
   const src = `/api/plex/image?thumb=${encodeURIComponent(thumb)}&w=800&h=800`;
   return <img src={src} alt={alt} className={className} onError={() => setErr(true)} draggable={false} />;
+}
+
+/* ─── QR Code as raster image (SVG doesn't render on many TVs) ─── */
+function QRImage({ url, size = 80 }: { url: string; size?: number }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Wait for QRCodeCanvas to render, then grab the data URL
+    const timer = setTimeout(() => {
+      const canvas = canvasContainerRef.current?.querySelector('canvas');
+      if (canvas) {
+        try { setDataUrl(canvas.toDataURL('image/png')); } catch {}
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [url, size]);
+
+  return (
+    <>
+      {/* Hidden canvas renderer */}
+      <div ref={canvasContainerRef} style={{ position: 'absolute', left: -9999, top: -9999, opacity: 0, pointerEvents: 'none' }}>
+        <QRCodeCanvas value={url} size={size} bgColor="#ffffff" fgColor="#000000" level="M" />
+      </div>
+      {/* Visible raster image */}
+      {dataUrl && (
+        <img src={dataUrl} alt="QR code" width={size} height={size} className="rounded-lg" style={{ imageRendering: 'pixelated' }} />
+      )}
+    </>
+  );
 }
 
 /* ─── Animated Background (standalone, no player-context) ─── */
@@ -463,7 +493,7 @@ export default function TVPage() {
           <p className="text-xl text-zinc-600 mt-2">Waiting for playback...</p>
           {mobileUrl && (
             <div className="mt-6 flex flex-col items-center gap-2">
-              <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={mobileUrl} size={100} /></div>
+              <div className="bg-white p-2 rounded-lg"><QRImage url={mobileUrl} size={100} /></div>
               <p className="text-xs text-zinc-600">Scan to open mobile remote</p>
             </div>
           )}
@@ -606,20 +636,19 @@ export default function TVPage() {
         </div>
       )}
 
-      {/* Bottom: QR + EQ + Progress bar */}
+      {/* Bottom: QR above EQ + Progress bar */}
       <div className="flex-shrink-0 px-6 pb-4 relative z-10 space-y-2">
-        {/* QR code + EQ row */}
-        <div className="flex items-end gap-4">
-          <div className="flex-1">
-            <TVEqualizer analyserNode={analyserNode} isPlaying={np?.isPlaying ?? false} />
-          </div>
-          {mobileUrl && (
-            <div className="flex flex-col items-center gap-1 flex-shrink-0">
-              <div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={mobileUrl} size={56} /></div>
-              <p className="text-[9px] text-zinc-600">Mobile</p>
+        {/* QR code - right-aligned above EQ */}
+        {mobileUrl && (
+          <div className="flex justify-end">
+            <div className="flex flex-col items-center gap-0.5">
+              <div className="bg-white p-1 rounded-lg"><QRImage url={mobileUrl} size={48} /></div>
+              <p className="text-[8px] text-zinc-600">Mobile</p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+        {/* EQ */}
+        <TVEqualizer analyserNode={analyserNode} isPlaying={np?.isPlaying ?? false} />
         {/* Progress */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 tabular-nums w-12 text-right">{formatTime(localTime)}</span>

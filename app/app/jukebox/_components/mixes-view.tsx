@@ -195,21 +195,24 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   useEffect(() => {
     if (editing === null) return;
     const calcSize = () => {
-      const container = artistContainerRef.current;
-      if (!container) return;
-      const available = container.clientHeight;
+      // Measure the outer artist section wrapper (flex-1) to get full available height
+      const section = artistScrollRef.current;
+      if (!section) return;
+      const available = section.clientHeight;
+      // Subtract header row (~28px) + search input (~32px) + selected chips (~max 32px) + gaps
+      const overhead = 70;
       const gapSize = 8;
-      const labelHeight = 20;
+      const labelHeight = 18;
       const rows = 4;
       const totalGaps = (rows - 1) * gapSize;
-      // Use all available height minus gaps and labels
-      const perRow = Math.max(60, Math.floor((available - totalGaps - labelHeight * rows) / rows));
+      const usable = available - overhead;
+      const perRow = Math.max(60, Math.floor((usable - totalGaps - labelHeight * rows) / rows));
       setArtistItemSize(perRow);
     };
     // Delay to let DOM settle
-    const t = setTimeout(calcSize, 50);
+    const t = setTimeout(calcSize, 100);
     const ro = new ResizeObserver(calcSize);
-    if (artistContainerRef.current) ro.observe(artistContainerRef.current);
+    if (artistScrollRef.current) ro.observe(artistScrollRef.current);
     return () => { clearTimeout(t); ro.disconnect(); };
   }, [editing]);
 
@@ -367,7 +370,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
         </div>
 
         {/* Artist selection grid - fills ALL remaining space */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div ref={artistScrollRef} className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1 flex-shrink-0">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" /> Emphasized Artists
