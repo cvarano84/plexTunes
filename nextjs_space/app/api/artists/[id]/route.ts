@@ -15,12 +15,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         cachedAlbums: {
           orderBy: { year: 'desc' },
         },
-        cachedTracks: {
-          orderBy: popularOnly ? { popularity: 'desc' } : { trackNumber: 'asc' },
-          take: popularOnly ? 20 : undefined,
+        cachedTracks: popularOnly ? {
+          orderBy: [{ popularity: 'desc' }, { playCount: 'desc' }, { title: 'asc' }],
+          where: { OR: [{ popularity: { gt: 0 } }, { playCount: { gt: 0 } }, { billboardPeak: { not: null } }] },
+          take: 30,
+        } : {
+          orderBy: [{ trackNumber: 'asc' }],
         },
       },
     });
+
+    // If popular mode returned too few tracks (not enough with popularity data), supplement with remaining
+    if (popularOnly && artist && (artist.cachedTracks?.length ?? 0) < 10) {
+      const existingIds = new Set(artist.cachedTracks.map(t => t.id));
+      const moreTracks = await prisma.cachedTrack.findMany({
+        where: { artistId, id: { notIn: [...existingIds] } },
+        orderBy: [{ playCount: 'desc' }, { title: 'asc' }],
+        take: 20 - (artist.cachedTracks?.length ?? 0),
+      });
+      artist.cachedTracks = [...artist.cachedTracks, ...moreTracks];
+    }
 
     if (!artist) {
       return NextResponse.json({ error: 'Artist not found' }, { status: 404 });

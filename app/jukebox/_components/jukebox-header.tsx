@@ -1,7 +1,7 @@
 "use client";
 
-import React from 'react';
-import { Disc3, Settings } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Disc3, Settings, Maximize, Minimize } from 'lucide-react';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 
@@ -13,6 +13,24 @@ interface JukeboxHeaderProps {
 export default function JukeboxHeader({ onNavigate, jukeboxTitle }: JukeboxHeaderProps) {
   const { currentStationName, isPlaying } = usePlayer();
   const title = jukeboxTitle || 'Plex Jukebox';
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const updateFullscreenState = useCallback(() => {
+    setIsFullscreen(!!document.fullscreenElement);
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, [updateFullscreenState]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/30">
@@ -31,13 +49,23 @@ export default function JukeboxHeader({ onNavigate, jukeboxTitle }: JukeboxHeade
             </>
           )}
         </div>
-        <button
-          onClick={() => onNavigate('settings')}
-          className="w-9 h-9 rounded-lg bg-secondary/50 flex items-center justify-center hover:bg-secondary transition-colors flex-shrink-0"
-          aria-label="Settings"
-        >
-          <Settings className="w-4 h-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={toggleFullscreen}
+            className="w-9 h-9 rounded-lg bg-secondary/50 flex items-center justify-center hover:bg-secondary transition-colors"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4 text-muted-foreground" /> : <Maximize className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          <button
+            onClick={() => onNavigate('settings')}
+            className="w-9 h-9 rounded-lg bg-secondary/50 flex items-center justify-center hover:bg-secondary transition-colors"
+            aria-label="Settings"
+          >
+            <Settings className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
     </header>
   );

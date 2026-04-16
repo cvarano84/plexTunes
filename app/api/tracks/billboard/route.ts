@@ -3,76 +3,79 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-// Billboard chart data lookup via LLM, with caching
+// In-memory billboard index: { "title|artist" -> { peak, weeks } }
+let billboardIndex: Map<string, { peak: number; weeks: number }> | null = null;
+let indexLoading = false;
+let indexError = '';
+let indexStats = { totalEntries: 0, matched: 0, lastBuilt: '' };
+
+function normalizeKey(title: string, artist: string): string {
+  return `${title}|${artist}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+}
+
+async function buildBillboardIndex(): Promise<Map<string, { peak: number; weeks: number }>> {
+  const idx = new Map<string, { peak: number; weeks: number }>();
+  // Fetch chart data from the GitHub repo (raw JSON endpoint)
+  // The repo provides a compiled JSON with all chart entries
+  const url = 'https://raw.githubusercontent.com/mhollingshead/billboard-hot-100/main/chart-data/chart-data.json';
+  console.log('Fetching Billboard data from GitHub...');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch billboard data: ${res.status}`);
+  const data: Array<{ date: string; data: Array<{ rank: number; song: string; artist: string; weeks_on_chart: number }> }> = await res.json();
+
+  // Build aggregated index: track best peak position and max weeks on chart
+  for (const week of data) {
+    for (const entry of (week.data ?? [])) {
+      const key = normalizeKey(entry.song ?? '', entry.artist ?? '');
+      const existing = idx.get(key);
+      if (existing) {
+        if (entry.rank < existing.peak) existing.peak = entry.rank;
+        if (entry.weeks_on_chart > existing.weeks) existing.weeks = entry.weeks_on_chart;
+      } else {
+        idx.set(key, { peak: entry.rank, weeks: entry.weeks_on_chart });
+      }
+    }
+  }
+  console.log(`Billboard index built: ${idx.size} unique songs from ${data.length} weeks`);
+  return idx;
+}
+
+// GET: Lookup a single track OR get index status
 export async function GET(req: NextRequest) {
   try {
     const trackId = req.nextUrl.searchParams.get('trackId');
+    const statusOnly = req.nextUrl.searchParams.get('status');
+
+    if (statusOnly) {
+      return NextResponse.json({
+        indexed: !!billboardIndex,
+        loading: indexLoading,
+        error: indexError,
+        ...indexStats,
+      });
+    }
+
     if (!trackId) return NextResponse.json({ error: 'trackId required' }, { status: 400 });
 
     const track = await prisma.cachedTrack.findUnique({
       where: { id: trackId },
-      select: { id: true, title: true, artistName: true, year: true, billboardPeak: true, billboardWeeks: true, billboardCheckedAt: true },
+      select: { id: true, title: true, artistName: true, billboardPeak: true, billboardWeeks: true, billboardCheckedAt: true },
     });
     if (!track) return NextResponse.json({ error: 'Track not found' }, { status: 404 });
-
-    // Check if we already have cached data
     if (track.billboardCheckedAt) {
-      const ageMs = Date.now() - new Date(track.billboardCheckedAt).getTime();
-      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
-      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-      const trackAge = track.year ? (new Date().getFullYear() - track.year) : 999;
-      // Songs > 6 months old: never re-check. Newer songs: re-check after 7 days.
-      if (trackAge > 0.5) {
-        return NextResponse.json({ peak: track.billboardPeak, weeks: track.billboardWeeks, cached: true });
-      }
-      if (ageMs < oneWeekMs) {
-        return NextResponse.json({ peak: track.billboardPeak, weeks: track.billboardWeeks, cached: true });
-      }
+      return NextResponse.json({ peak: track.billboardPeak, weeks: track.billboardWeeks, cached: true });
     }
 
-    // Look up via LLM
-    const apiKey = process.env.ABACUSAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'LLM API not configured' }, { status: 500 });
-
-    const prompt = `For the song "${track.title}" by ${track.artistName || 'unknown artist'}${track.year ? ` (${track.year})` : ''}, provide its Billboard Hot 100 chart performance data. Return peak_position as the highest chart position (integer 1-100) and weeks_on_chart as total weeks spent on the chart (integer). If this song was never on the Billboard Hot 100 or you are not confident, return -1 for both values. Respond ONLY with a JSON object.`;
-
-    const llmRes = await fetch('https://apps.abacus.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4.1-mini',
-        messages: [
-          { role: 'system', content: 'You are a music chart data expert. Return only valid JSON with peak_position and weeks_on_chart as integers. Use -1 if the song was never charted.' },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 200,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!llmRes.ok) {
-      const errText = await llmRes.text().catch(() => '');
-      console.error('LLM API error:', llmRes.status, errText);
-      return NextResponse.json({ error: 'LLM lookup failed', status: llmRes.status }, { status: 500 });
+    // If index not built, return pending
+    if (!billboardIndex) {
+      return NextResponse.json({ error: 'Billboard index not built. POST to /api/tracks/billboard to build it.' }, { status: 425 });
     }
 
-    const llmData = await llmRes.json();
-    const content = llmData?.choices?.[0]?.message?.content;
-    let parsed: any = null;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      console.error('Failed to parse LLM response:', content);
-      return NextResponse.json({ error: 'Parse error', raw: content }, { status: 500 });
-    }
+    const key = normalizeKey(track.title, track.artistName ?? '');
+    const match = billboardIndex.get(key);
+    const peak = match?.peak ?? null;
+    const weeks = match?.weeks ?? null;
 
-    const rawPeak = typeof parsed?.peak_position === 'number' ? parsed.peak_position : -1;
-    const rawWeeks = typeof parsed?.weeks_on_chart === 'number' ? parsed.weeks_on_chart : -1;
-    // -1 means not charted or unknown
-    const peak = rawPeak > 0 ? rawPeak : null;
-    const weeks = rawWeeks > 0 ? rawWeeks : null;
-
-    // Cache in DB
     await prisma.cachedTrack.update({
       where: { id: trackId },
       data: { billboardPeak: peak, billboardWeeks: weeks, billboardCheckedAt: new Date() },
@@ -83,4 +86,62 @@ export async function GET(req: NextRequest) {
     console.error('Billboard lookup error:', e?.message);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
+}
+
+// POST: Build the index from GitHub and batch-match all tracks
+export async function POST() {
+  if (indexLoading) {
+    return NextResponse.json({ error: 'Already building index', ...indexStats }, { status: 409 });
+  }
+
+  indexLoading = true;
+  indexError = '';
+
+  // Run in background
+  (async () => {
+    try {
+      billboardIndex = await buildBillboardIndex();
+      indexStats.totalEntries = billboardIndex.size;
+      indexStats.lastBuilt = new Date().toISOString();
+
+      // Batch match against all tracks in DB
+      const allTracks = await prisma.cachedTrack.findMany({
+        where: { billboardCheckedAt: null },
+        select: { id: true, title: true, artistName: true },
+      });
+
+      let matched = 0;
+      const batchSize = 100;
+      for (let i = 0; i < allTracks.length; i += batchSize) {
+        const batch = allTracks.slice(i, i + batchSize);
+        const updates = batch.map(track => {
+          const key = normalizeKey(track.title, track.artistName ?? '');
+          const match = billboardIndex!.get(key);
+          return prisma.cachedTrack.update({
+            where: { id: track.id },
+            data: {
+              billboardPeak: match?.peak ?? null,
+              billboardWeeks: match?.weeks ?? null,
+              billboardCheckedAt: new Date(),
+            },
+          });
+        });
+        await Promise.all(updates);
+        matched += batch.filter(t => {
+          const key = normalizeKey(t.title, t.artistName ?? '');
+          return billboardIndex!.has(key);
+        }).length;
+      }
+
+      indexStats.matched = matched;
+      console.log(`Billboard batch match: ${matched}/${allTracks.length} tracks matched`);
+    } catch (e: any) {
+      console.error('Billboard index build error:', e?.message);
+      indexError = e?.message ?? 'Unknown error';
+    } finally {
+      indexLoading = false;
+    }
+  })();
+
+  return NextResponse.json({ message: 'Building billboard index in background...' });
 }

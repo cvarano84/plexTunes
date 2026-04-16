@@ -73,7 +73,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     return () => ro.disconnect();
   }, [artistRows]);
 
-  const fetchArtists = useCallback(async (pageNum: number, searchStr: string, letterFilter: string, append: boolean) => {
+  const fetchArtists = useCallback(async (pageNum: number, searchStr: string, _letterFilter: string, append: boolean) => {
     if (append) {
       setLoadingMore(true);
     } else {
@@ -84,9 +84,8 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
         page: pageNum.toString(),
         limit: '100',
       });
-      if (letterFilter && letterFilter !== 'All') {
-        params.set('letter', letterFilter);
-      } else if (searchStr) {
+      // Only use search filter - letter tap scrolls instead of filtering
+      if (searchStr) {
         params.set('search', searchStr);
       }
       const res = await fetch(`/api/artists?${params}`);
@@ -110,18 +109,18 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     }
   }, []);
 
-  // Fetch when search or letter changes
+  // Fetch when search changes (letter tap only scrolls, doesn't re-fetch)
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
       setPage(1);
       setHasMore(true);
-      fetchArtists(1, search, activeLetter, false);
+      fetchArtists(1, search, 'All', false);
     }, search ? 300 : 0);
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [search, activeLetter, fetchArtists]);
+  }, [search, fetchArtists]);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -143,7 +142,19 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
 
   const handleLetterTap = (letter: string) => {
     setActiveLetter(letter);
+    if (letter === 'All') {
+      setSearch('');
+      if (scrollRef.current) scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+      return;
+    }
     setSearch('');
+    // Find position of first artist starting with this letter and scroll to it
+    const idx = artists.findIndex(a => (a?.name ?? '').toUpperCase().startsWith(letter));
+    if (idx >= 0 && scrollRef.current) {
+      const colIdx = Math.floor(idx / artistRows);
+      const scrollTarget = colIdx * (itemSize + 12); // item width + gap
+      scrollRef.current.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+    }
   };
 
   const handleSearchChange = (val: string) => {

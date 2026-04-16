@@ -166,13 +166,18 @@ function MetadataDashboard() {
   const [metaStatus, setMetaStatus] = React.useState<any>(null);
   const [metaLoading, setMetaLoading] = React.useState(true);
   const [scanningType, setScanningType] = React.useState<string | null>(null);
+  const [scrapeStatus, setScrapeStatus] = React.useState<any>(null);
 
   const loadStatus = React.useCallback(() => {
     setMetaLoading(true);
-    fetch('/api/metadata/status')
-      .then(r => r?.json?.())
-      .then(data => { setMetaStatus(data); setMetaLoading(false); })
-      .catch(() => setMetaLoading(false));
+    Promise.all([
+      fetch('/api/metadata/status').then(r => r?.json?.()).catch(() => null),
+      fetch('/api/metadata/scrape').then(r => r?.json?.()).catch(() => null),
+    ]).then(([meta, scrape]) => {
+      setMetaStatus(meta);
+      setScrapeStatus(scrape);
+      setMetaLoading(false);
+    });
   }, []);
 
   React.useEffect(() => { loadStatus(); }, [loadStatus]);
@@ -253,6 +258,19 @@ function MetadataDashboard() {
             ))}
           </div>
 
+          {/* Background scrape status */}
+          {scrapeStatus?.inProgress && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+              <div className="flex items-center gap-2 mb-1">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                <span className="text-sm font-medium text-amber-400">Background Scrape Running</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Phase: {scrapeStatus.phase} — {scrapeStatus.processed}/{scrapeStatus.total} — {scrapeStatus.current}
+              </p>
+            </div>
+          )}
+
           {/* Scan triggers */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -270,6 +288,27 @@ function MetadataDashboard() {
             >
               {scanningType === 'popularity' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
               Refresh Popularity
+            </button>
+            <button
+              onClick={async () => {
+                if (scrapeStatus?.inProgress) {
+                  await fetch('/api/metadata/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop' }) });
+                } else {
+                  await fetch('/api/metadata/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                }
+                setTimeout(loadStatus, 1000);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors ${
+                scrapeStatus?.inProgress
+                  ? 'bg-red-600 text-white active:bg-red-700'
+                  : 'bg-secondary text-secondary-foreground active:bg-secondary/80'
+              }`}
+            >
+              {scrapeStatus?.inProgress ? (
+                <><XCircle className="w-4 h-4" /> Stop Scrape</>
+              ) : (
+                <><Zap className="w-4 h-4" /> Background Scrape</>
+              )}
             </button>
             <button
               onClick={loadStatus}

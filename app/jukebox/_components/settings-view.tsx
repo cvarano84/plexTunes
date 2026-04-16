@@ -27,6 +27,16 @@ interface SettingsViewProps {
   onJukeboxTitleChange: (val: string) => void;
   stationQueueSize: number;
   onStationQueueSizeChange: (val: number) => void;
+  eqBarHeight: number;
+  onEqBarHeightChange: (val: number) => void;
+  artistBioHeight: number;
+  onArtistBioHeightChange: (val: number) => void;
+  artistAlbumHeight: number;
+  onArtistAlbumHeightChange: (val: number) => void;
+  artistSimilarHeight: number;
+  onArtistSimilarHeightChange: (val: number) => void;
+  artistTrackWidth: number;
+  onArtistTrackWidthChange: (val: number) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -156,13 +166,18 @@ function MetadataDashboard() {
   const [metaStatus, setMetaStatus] = React.useState<any>(null);
   const [metaLoading, setMetaLoading] = React.useState(true);
   const [scanningType, setScanningType] = React.useState<string | null>(null);
+  const [scrapeStatus, setScrapeStatus] = React.useState<any>(null);
 
   const loadStatus = React.useCallback(() => {
     setMetaLoading(true);
-    fetch('/api/metadata/status')
-      .then(r => r?.json?.())
-      .then(data => { setMetaStatus(data); setMetaLoading(false); })
-      .catch(() => setMetaLoading(false));
+    Promise.all([
+      fetch('/api/metadata/status').then(r => r?.json?.()).catch(() => null),
+      fetch('/api/metadata/scrape').then(r => r?.json?.()).catch(() => null),
+    ]).then(([meta, scrape]) => {
+      setMetaStatus(meta);
+      setScrapeStatus(scrape);
+      setMetaLoading(false);
+    });
   }, []);
 
   React.useEffect(() => { loadStatus(); }, [loadStatus]);
@@ -243,6 +258,19 @@ function MetadataDashboard() {
             ))}
           </div>
 
+          {/* Background scrape status */}
+          {scrapeStatus?.inProgress && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+              <div className="flex items-center gap-2 mb-1">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                <span className="text-sm font-medium text-amber-400">Background Scrape Running</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Phase: {scrapeStatus.phase} — {scrapeStatus.processed}/{scrapeStatus.total} — {scrapeStatus.current}
+              </p>
+            </div>
+          )}
+
           {/* Scan triggers */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -260,6 +288,27 @@ function MetadataDashboard() {
             >
               {scanningType === 'popularity' ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
               Refresh Popularity
+            </button>
+            <button
+              onClick={async () => {
+                if (scrapeStatus?.inProgress) {
+                  await fetch('/api/metadata/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop' }) });
+                } else {
+                  await fetch('/api/metadata/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                }
+                setTimeout(loadStatus, 1000);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors ${
+                scrapeStatus?.inProgress
+                  ? 'bg-red-600 text-white active:bg-red-700'
+                  : 'bg-secondary text-secondary-foreground active:bg-secondary/80'
+              }`}
+            >
+              {scrapeStatus?.inProgress ? (
+                <><XCircle className="w-4 h-4" /> Stop Scrape</>
+              ) : (
+                <><Zap className="w-4 h-4" /> Background Scrape</>
+              )}
             </button>
             <button
               onClick={loadStatus}
@@ -289,6 +338,11 @@ export default function SettingsView({
   lyricsZoom, onLyricsZoomChange,
   jukeboxTitle, onJukeboxTitleChange,
   stationQueueSize, onStationQueueSizeChange,
+  eqBarHeight, onEqBarHeightChange,
+  artistBioHeight, onArtistBioHeightChange,
+  artistAlbumHeight, onArtistAlbumHeightChange,
+  artistSimilarHeight, onArtistSimilarHeightChange,
+  artistTrackWidth, onArtistTrackWidthChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -959,6 +1013,15 @@ export default function SettingsView({
           </div>
 
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">EQ Bar Height</label>
+            <p className="text-xs text-muted-foreground mb-2">Height of the LED equalizer in the player bar</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="24" max="96" step="4" value={eqBarHeight} onChange={(e) => onEqBarHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{eqBarHeight}px</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Touch Keyboard Size</label>
             <div className="flex gap-2 mt-2">
               {(['small', 'medium', 'large', 'xl', 'xxl'] as const).map((sz) => (
@@ -966,6 +1029,48 @@ export default function SettingsView({
                   {sz.charAt(0).toUpperCase() + sz.slice(1)}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Artist Detail Layout */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.19 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <SlidersHorizontal className="w-5 h-5 text-accent" />
+          Artist Detail Layout
+        </h3>
+        <div className="space-y-3">
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Bio Section Height</label>
+            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for artist photo & bio</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="15" max="50" step="5" value={artistBioHeight} onChange={(e) => onArtistBioHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{artistBioHeight}%</span>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Albums Section Height</label>
+            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for album carousel</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="20" max="60" step="5" value={artistAlbumHeight} onChange={(e) => onArtistAlbumHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{artistAlbumHeight}%</span>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Similar Artists Height</label>
+            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for similar artists</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="15" max="50" step="5" value={artistSimilarHeight} onChange={(e) => onArtistSimilarHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{artistSimilarHeight}%</span>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Track List Width</label>
+            <p className="text-xs text-muted-foreground mb-2">Percentage of page width for track listing</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="25" max="60" step="5" value={artistTrackWidth} onChange={(e) => onArtistTrackWidthChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{artistTrackWidth}%</span>
             </div>
           </div>
         </div>

@@ -7,10 +7,14 @@ import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 import PlexImage from './plex-image';
 import AudioControls from './audio-controls';
+import LEDEqualizer from './led-equalizer';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface PlayerBarProps {
   onNavigate: (view: ViewType, opts?: any) => void;
+  eqBands?: number;
+  eqColorScheme?: string;
+  eqBarHeight?: number;
 }
 
 function formatTime(seconds: number): string {
@@ -20,7 +24,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s?.toString?.()?.padStart?.(2, '0') ?? '00'}`;
 }
 
-export default function PlayerBar({ onNavigate }: PlayerBarProps) {
+export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'classic', eqBarHeight = 48 }: PlayerBarProps) {
   const {
     currentTrack,
     isPlaying,
@@ -31,6 +35,7 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
     prevTrack,
     seek,
     queue,
+    analyserNode,
   } = usePlayer();
 
   const [qrOpen, setQrOpen] = useState(false);
@@ -63,6 +68,11 @@ export default function PlayerBar({ onNavigate }: PlayerBarProps) {
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 z-50"
     >
+      {/* LED Equalizer */}
+      <div className="px-4 py-0.5">
+        <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} height={eqBarHeight} />
+      </div>
+
       {/* Progress bar (clickable) */}
       <div
         className="h-1 bg-muted/50 cursor-pointer group"
