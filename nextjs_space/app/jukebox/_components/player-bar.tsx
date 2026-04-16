@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -38,7 +38,13 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
     analyserNode,
     sweetFades,
     setSweetFades,
+    partyBeat,
+    setPartyBeat,
+    partyBeatRate,
+    setPartyBeatRate,
   } = usePlayer();
+
+  const [partyPopover, setPartyPopover] = useState(false);
 
   const [qrOpen, setQrOpen] = useState(false);
   const [mobileUrl, setMobileUrl] = useState('');
@@ -110,6 +116,74 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />
             )}
           </button>
+
+          {/* Party Beat toggle */}
+          <div className="relative">
+            <button
+              onClick={() => setPartyBeat(!partyBeat)}
+              onContextMenu={(e) => { e.preventDefault(); setPartyPopover(p => !p); }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors relative ${
+                partyBeat ? 'bg-pink-600 text-white' : 'text-muted-foreground hover:bg-secondary'
+              }`}
+              title={partyBeat ? `Party Beat: ON (${Math.round(partyBeatRate * 100)}%) — right-click to adjust` : 'Party Beat: OFF — tempo shift with key lock'}
+            >
+              <PartyPopper className="w-5 h-5" />
+              {partyBeat && (
+                <>
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />
+                  <span className="absolute inset-0 rounded-full bg-pink-500/30 animate-ping pointer-events-none" />
+                </>
+              )}
+            </button>
+            <AnimatePresence>
+              {partyPopover && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                  className="absolute bottom-14 left-1/2 -translate-x-1/2 z-[100] bg-card border border-border/40 rounded-xl p-3 shadow-2xl min-w-[180px]"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold">Party Beat Tempo</span>
+                    <button onClick={() => setPartyPopover(false)} className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-secondary">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPartyBeatRate(partyBeatRate - 0.02)}
+                      className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <div className="flex-1 text-center">
+                      <span className="text-lg font-bold tabular-nums">{Math.round(partyBeatRate * 100)}%</span>
+                      <p className="text-[10px] text-muted-foreground">Speed (pitch locked)</p>
+                    </div>
+                    <button
+                      onClick={() => setPartyBeatRate(partyBeatRate + 0.02)}
+                      className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min="80"
+                    max="130"
+                    value={Math.round(partyBeatRate * 100)}
+                    onChange={(e) => setPartyBeatRate(parseInt(e.target.value) / 100)}
+                    className="w-full mt-2 accent-pink-500"
+                  />
+                  <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
+                    <span>80%</span>
+                    <button onClick={() => setPartyBeatRate(1.0)} className="text-pink-400 font-medium hover:underline">Reset</button>
+                    <span>130%</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Track info */}
           <button

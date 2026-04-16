@@ -89,6 +89,10 @@ interface PlayerContextType extends PlayerState {
   advancedEqPreset: string;
   sweetFades: boolean;
   setSweetFades: (enabled: boolean) => void;
+  partyBeat: boolean;
+  setPartyBeat: (enabled: boolean) => void;
+  partyBeatRate: number;
+  setPartyBeatRate: (rate: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -119,6 +123,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [advancedEqGains, setAdvancedEqGains] = useState<number[]>(new Array(10).fill(0));
   const [advancedEqPreset, setAdvancedEqPresetState] = useState('flat');
   const [sweetFades, setSweetFadesState] = useState(false);
+  const [partyBeat, setPartyBeatState] = useState(false);
+  const [partyBeatRate, setPartyBeatRateState] = useState(1.08); // ~108% speed, good for dance feel
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -261,6 +267,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     try {
       const saved = localStorage.getItem('jukebox_sweet_fades');
       if (saved === 'true') setSweetFadesState(true);
+      const pb = localStorage.getItem('jukebox_party_beat');
+      if (pb === 'true') setPartyBeatState(true);
+      const pbr = localStorage.getItem('jukebox_party_beat_rate');
+      if (pbr) setPartyBeatRateState(Math.max(0.5, Math.min(1.5, parseFloat(pbr) || 1.08)));
     } catch { /* ignore */ }
   }, []);
 
@@ -268,6 +278,50 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setSweetFadesState(enabled);
     try { localStorage.setItem('jukebox_sweet_fades', enabled ? 'true' : 'false'); } catch { /* ignore */ }
   }, []);
+
+  // Party Beat: setters with localStorage persistence
+  const setPartyBeat = useCallback((enabled: boolean) => {
+    setPartyBeatState(enabled);
+    try { localStorage.setItem('jukebox_party_beat', enabled ? 'true' : 'false'); } catch { /* ignore */ }
+    const audio = audioRef.current;
+    if (audio) {
+      audio.preservesPitch = true;
+      audio.playbackRate = enabled ? partyBeatRate : 1.0;
+    }
+    const xAudio = crossfadeAudioRef.current;
+    if (xAudio) {
+      xAudio.preservesPitch = true;
+      xAudio.playbackRate = enabled ? partyBeatRate : 1.0;
+    }
+  }, [partyBeatRate]);
+
+  const setPartyBeatRate = useCallback((rate: number) => {
+    const clamped = Math.max(0.5, Math.min(1.5, rate));
+    setPartyBeatRateState(clamped);
+    try { localStorage.setItem('jukebox_party_beat_rate', String(clamped)); } catch { /* ignore */ }
+    if (partyBeat) {
+      const audio = audioRef.current;
+      if (audio) { audio.preservesPitch = true; audio.playbackRate = clamped; }
+      const xAudio = crossfadeAudioRef.current;
+      if (xAudio) { xAudio.preservesPitch = true; xAudio.playbackRate = clamped; }
+    }
+  }, [partyBeat]);
+
+  // Apply party beat rate when new track loads
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const applyRate = () => {
+      if (partyBeat) {
+        audio.preservesPitch = true;
+        audio.playbackRate = partyBeatRate;
+      } else {
+        audio.playbackRate = 1.0;
+      }
+    };
+    audio.addEventListener('loadeddata', applyRate);
+    return () => audio.removeEventListener('loadeddata', applyRate);
+  }, [partyBeat, partyBeatRate]);
 
   // Resume AudioContext whenever playback starts
   useEffect(() => {
@@ -714,6 +768,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         advancedEqPreset,
         sweetFades,
         setSweetFades,
+        partyBeat,
+        setPartyBeat,
+        partyBeatRate,
+        setPartyBeatRate,
       }}
     >
       {children}
