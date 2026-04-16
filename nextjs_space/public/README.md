@@ -1,68 +1,84 @@
-# 🎵 Plex Jukebox (PlexTunes)
+# 🎵 HomeBarr Tunes
 
-A self-hosted, TouchTunes-style jukebox interface for your Plex music library. Beautiful cover art, synchronized lyrics, smart stations, and touch-optimized navigation — all in a Docker container.
+A self-hosted, TouchTunes-style jukebox interface for your Plex music library. Part of the *arr family of self-hosted apps. Beautiful cover art, synchronized lyrics, smart stations, animated backgrounds, and touch-optimized navigation — all in a Docker container.
 
-![PlexTunes](https://img.shields.io/docker/pulls/gilligan5000/plextunes?style=flat-square)
+![HomeBarr Tunes](https://img.shields.io/docker/pulls/gilligan5000/plextunes?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 ## ✨ Features
 
-- **🎨 TouchTunes-Style Interface** — Dark theme with neon accents, optimized for large touchscreens
-- **🎤 Synchronized Lyrics** — Real-time lyrics displayed during playback via Genius API
-- **📻 Smart Stations** — Auto-generated stations by decade & genre, featuring only popular mainstream hits
-- **🔍 Smart Navigation** — Highlights popular songs, with easy deep-dive into full artist catalogs
-- **🖼️ Beautiful Visuals** — Cover art prominently displayed with vinyl animations
-- **📱 Touch-Friendly** — Large buttons, smooth gestures, designed for touchscreen kiosks
+- **🎨 TouchTunes-Style Interface** — Dark theme with neon accents, optimized for large touchscreens and kiosks
+- **🎤 Synchronized Lyrics** — Real-time karaoke-style lyrics via LRCLIB with Genius fallback
+- **📻 Smart Stations** — Auto-generated stations by decade & genre from your Plex library
+- **🎛️ Custom Mixes** — Combine stations and artists into personalized mix playlists
+- **🎵 Party Beat** — Auto-detects song BPM (via Deezer) and adjusts tempo to keep the party at 120–130 BPM
+- **🌊 Sweet Fades** — Gapless crossfade transitions between tracks with dual-deck audio engine
+- **🌌 Animated Backgrounds** — Canvas-based visual effects (aurora, particles, waves, nebula, gradient) with optional music reactivity
+- **🔊 10-Band Equalizer** — Built-in Web Audio EQ with visual LED bars
+- **📱 Mobile Remote** — Phone-friendly remote control page at `/mobile`
+- **📺 TV Display** — Dedicated read-only display page at `/tv` for casting "Now Playing" to a TV browser
+- **🔍 Full-Text Search** — Search across artists, albums, and tracks instantly
+- **🅰️ A–Z Quick Jump** — Alphabet navigation bar for fast artist browsing
+- **📊 Top Played** — Track play statistics and billboard chart data
+- **⌨️ Touch Keyboard** — On-screen keyboard for kiosk setups without a physical keyboard
+
+## 📸 Screenshots
+
+### Now Playing
+Synchronized lyrics, album art with spinning vinyl, track history, and queue management.
+
+![Now Playing](screenshots/now-playing.png)
+
+### Smart Stations
+Auto-generated stations from your library — browse by decade, genre, or popularity.
+
+![Stations](screenshots/stations.png)
+
+### Artists
+A–Z quick-jump navigation with circular artist portraits and album counts.
+
+![Artists](screenshots/artists.png)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
 - A Plex Media Server with music libraries
-- API keys for [Genius](https://genius.com/api-clients) and [Spotify](https://developer.spotify.com/dashboard)
 
-### 1. Create your environment file
+### 1. Create your docker-compose.yml
 
-```bash
-mkdir plextunes && cd plextunes
-
-cat > .env << EOF
-GENIUS_ACCESS_TOKEN=your_genius_token_here
-SPOTIFY_CLIENT_ID=your_spotify_client_id_here
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
-EOF
-```
-
-### 2. Create your docker-compose.yml
+All configuration is done directly in the YAML — no `.env` file needed.
 
 ```yaml
 version: '3.8'
 
 services:
-  plextunes:
+  homebarr:
     image: gilligan5000/plextunes:latest
-    container_name: plexTunes
+    container_name: homebarr-tunes
     ports:
       - "30071:3000"
     environment:
-      - DATABASE_URL=postgresql://jukebox:jukebox@plextunes-db:5432/jukebox
-      - GENIUS_ACCESS_TOKEN=${GENIUS_ACCESS_TOKEN}
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - DATABASE_URL=postgresql://jukebox:jukebox@homebarr-db:5432/jukebox
+      # Optional: Add API keys for enhanced features
+      # - GENIUS_ACCESS_TOKEN=your_genius_token_here      # Enhanced lyrics
+      # - SPOTIFY_CLIENT_ID=your_spotify_client_id         # Popularity data
+      # - SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+      # - LASTFM_API_KEY=your_lastfm_key                  # Popularity fallback
     depends_on:
-      plextunes-db:
+      homebarr-db:
         condition: service_healthy
     restart: unless-stopped
 
-  plextunes-db:
+  homebarr-db:
     image: postgres:15-alpine
-    container_name: plexTunes-db
+    container_name: homebarr-db
     environment:
       - POSTGRES_USER=jukebox
       - POSTGRES_PASSWORD=jukebox
       - POSTGRES_DB=jukebox
     volumes:
-      - plextunes-pgdata:/var/lib/postgresql/data
+      - homebarr-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jukebox"]
       interval: 5s
@@ -71,10 +87,10 @@ services:
     restart: unless-stopped
 
 volumes:
-  plextunes-pgdata:
+  homebarr-pgdata:
 ```
 
-### 3. Launch
+### 2. Launch
 
 ```bash
 docker compose up -d
@@ -96,7 +112,7 @@ Your Plex credentials and library cache are stored in the PostgreSQL volume and 
 
 ## 🏗️ Portainer Stack
 
-In Portainer, create a new Stack and paste the `docker-compose.yml` contents above. Add your environment variables (GENIUS_ACCESS_TOKEN, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET) in the Environment section.
+In Portainer, create a new Stack and paste the `docker-compose.yml` contents above. API keys can be added directly in the environment section of the YAML.
 
 ## 🛠️ Building from Source
 
@@ -106,14 +122,29 @@ cd plexTunes
 docker compose -f docker-compose.build.yml up -d --build
 ```
 
-## 📝 Environment Variables
+## 📺 Remote Viewing
+
+HomeBarr Tunes includes two companion pages:
+
+| Page | URL | Purpose |
+|------|-----|--------|
+| **Mobile Remote** | `/mobile` | Phone-friendly queue management and browsing |
+| **TV Display** | `/tv` | Read-only "Now Playing" view for casting to a TV browser |
+
+To display on a TV: open `http://your-server-ip:30071/tv` in any browser on your TV (smart TV, Fire Stick, Chromecast with browser, etc.). The page auto-refreshes and shows album art, synced lyrics, and track info — no interaction needed.
+
+## 🔧 Optional API Keys
+
+HomeBarr Tunes works out of the box with no API keys. These optional services enhance specific features:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string (auto-configured in compose) |
-| `GENIUS_ACCESS_TOKEN` | Yes | [Genius API](https://genius.com/api-clients) token for lyrics |
-| `SPOTIFY_CLIENT_ID` | Yes | [Spotify API](https://developer.spotify.com/dashboard) client ID for popularity data |
-| `SPOTIFY_CLIENT_SECRET` | Yes | Spotify API client secret |
+| `GENIUS_ACCESS_TOKEN` | No | [Genius API](https://genius.com/api-clients) — fallback lyrics when LRCLIB doesn't have synced lyrics |
+| `SPOTIFY_CLIENT_ID` | No | [Spotify API](https://developer.spotify.com/dashboard) — enhanced popularity scoring for smart stations |
+| `SPOTIFY_CLIENT_SECRET` | No | Spotify API client secret |
+| `LASTFM_API_KEY` | No | [Last.fm API](https://www.last.fm/api) — alternative popularity provider |
+
+**Note:** Lyrics primarily come from LRCLIB (free, no key needed). BPM data comes from Deezer (free, no key needed). Popularity defaults to Deezer if no Spotify/Last.fm keys are configured.
 
 ## 📄 License
 

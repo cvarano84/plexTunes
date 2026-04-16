@@ -1,30 +1,32 @@
 version: '3.8'
 
 services:
-  plextunes:
+  homebarr:
     image: gilligan5000/plextunes:latest
-    container_name: plexTunes
+    container_name: homebarr-tunes
     ports:
       - "30071:3000"
     environment:
-      - DATABASE_URL=postgresql://jukebox:jukebox@plextunes-db:5432/jukebox
-      - GENIUS_ACCESS_TOKEN=${GENIUS_ACCESS_TOKEN}
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - DATABASE_URL=postgresql://jukebox:jukebox@homebarr-db:5432/jukebox
+      # Optional: Add API keys for enhanced features
+      # - GENIUS_ACCESS_TOKEN=your_genius_token_here
+      # - SPOTIFY_CLIENT_ID=your_spotify_client_id
+      # - SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+      # - LASTFM_API_KEY=your_lastfm_key
     depends_on:
-      plextunes-db:
+      homebarr-db:
         condition: service_healthy
     restart: unless-stopped
 
-  plextunes-db:
+  homebarr-db:
     image: postgres:15-alpine
-    container_name: plexTunes-db
+    container_name: homebarr-db
     environment:
       - POSTGRES_USER=jukebox
       - POSTGRES_PASSWORD=jukebox
       - POSTGRES_DB=jukebox
     volumes:
-      - plextunes-pgdata:/var/lib/postgresql/data
+      - homebarr-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jukebox"]
       interval: 5s
@@ -33,4 +35,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  plextunes-pgdata:
+  homebarr-pgdata:
