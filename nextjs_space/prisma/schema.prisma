@@ -128,3 +128,24 @@ model RemoteAction {
   processed Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+model JukeboxSettings {
+  id                  String   @id @default("default")
+  idleTimeout         Int      @default(30)
+  eqBands             Int      @default(32)
+  eqColorScheme       String   @default("classic")
+  previousTrackCount  Int      @default(5)
+  keyboardSize        String   @default("medium")
+  columnLayout        String   @default("balanced")
+  artistRows          Int      @default(4)
+  stationRows         Int      @default(1)
+  lyricsZoom          Int      @default(3)
+  jukeboxTitle        String   @default("")
+  stationQueueSize    Int      @default(5)
+  eqBarHeight         Int      @default(48)
+  artistBioHeight     Int      @default(30)
+  artistAlbumHeight   Int      @default(40)
+  artistSimilarHeight Int      @default(30)
+  artistTrackWidth    Int      @default(40)
+  updatedAt           DateTime @updatedAt
+}
