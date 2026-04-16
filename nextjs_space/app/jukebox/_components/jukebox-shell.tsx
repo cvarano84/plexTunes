@@ -40,6 +40,12 @@ function JukeboxInner() {
   const [lyricsZoom, setLyricsZoom] = useState(3);
   const [jukeboxTitle, setJukeboxTitle] = useState('');
   const [stationQueueSize, setStationQueueSize] = useState(5);
+  const [eqBarHeight, setEqBarHeight] = useState(48);
+  const [artistBioHeight, setArtistBioHeight] = useState(30);
+  const [artistAlbumHeight, setArtistAlbumHeight] = useState(40);
+  const [artistSimilarHeight, setArtistSimilarHeight] = useState(30);
+  const [artistTrackWidth, setArtistTrackWidth] = useState(40);
+  const settingsLoadedRef = useRef(false);
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -49,8 +55,9 @@ function JukeboxInner() {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue, currentTime, currentStationName } = usePlayer();
 
-  // Load settings from localStorage
+  // Load settings from server (with localStorage as fast cache)
   useEffect(() => {
+    // Load localStorage cache first for instant UI
     try {
       const saved = localStorage.getItem('jukebox-settings');
       if (saved) {
@@ -66,18 +73,57 @@ function JukeboxInner() {
         if (s.lyricsZoom !== undefined) setLyricsZoom(s.lyricsZoom);
         if (s.jukeboxTitle !== undefined) setJukeboxTitle(s.jukeboxTitle);
         if (s.stationQueueSize !== undefined) setStationQueueSize(s.stationQueueSize);
+        if (s.eqBarHeight !== undefined) setEqBarHeight(s.eqBarHeight);
+        if (s.artistBioHeight !== undefined) setArtistBioHeight(s.artistBioHeight);
+        if (s.artistAlbumHeight !== undefined) setArtistAlbumHeight(s.artistAlbumHeight);
+        if (s.artistSimilarHeight !== undefined) setArtistSimilarHeight(s.artistSimilarHeight);
+        if (s.artistTrackWidth !== undefined) setArtistTrackWidth(s.artistTrackWidth);
       }
     } catch { /* ignore */ }
+    // Then fetch from server (source of truth)
+    fetch('/api/jukebox-settings').then(r => r.json()).then(s => {
+      if (!s || s.error) return;
+      setIdleTimeout(s.idleTimeout ?? 30);
+      setEqBands(s.eqBands ?? 32);
+      setEqColorScheme(s.eqColorScheme ?? 'classic');
+      setPreviousTrackCount(s.previousTrackCount ?? 5);
+      setKeyboardSize(s.keyboardSize ?? 'medium');
+      setColumnLayout(s.columnLayout ?? 'balanced');
+      setArtistRows(s.artistRows ?? 4);
+      setStationRows(s.stationRows ?? 1);
+      setLyricsZoom(s.lyricsZoom ?? 3);
+      setJukeboxTitle(s.jukeboxTitle ?? '');
+      setStationQueueSize(s.stationQueueSize ?? 5);
+      setEqBarHeight(s.eqBarHeight ?? 48);
+      setArtistBioHeight(s.artistBioHeight ?? 30);
+      setArtistAlbumHeight(s.artistAlbumHeight ?? 40);
+      setArtistSimilarHeight(s.artistSimilarHeight ?? 30);
+      setArtistTrackWidth(s.artistTrackWidth ?? 40);
+      settingsLoadedRef.current = true;
+    }).catch(() => { settingsLoadedRef.current = true; });
   }, []);
 
-  // Save settings to localStorage
+  // Save settings to server + localStorage cache
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    try {
-      localStorage.setItem('jukebox-settings', JSON.stringify({
-        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize
-      }));
-    } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize]);
+    const settingsObj = {
+      idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout,
+      artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight,
+      artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth,
+    };
+    // Always write to localStorage for fast reads
+    try { localStorage.setItem('jukebox-settings', JSON.stringify(settingsObj)); } catch { /* ignore */ }
+    // Debounce server save
+    if (!settingsLoadedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetch('/api/jukebox-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsObj),
+      }).catch(() => {});
+    }, 1000);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight, artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -204,15 +250,13 @@ function JukeboxInner() {
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} jukeboxTitle={jukeboxTitle} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
-      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' || view === 'stats' ? 'overflow-hidden' : 'overflow-y-auto pb-32'}`}
+      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' || view === 'stats' ? 'overflow-hidden pb-36' : 'overflow-y-auto pb-36'}`}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
           <NowPlayingView
-            eqBands={eqBands}
-            eqColorScheme={eqColorScheme}
             previousTrackCount={previousTrackCount}
             columnLayout={columnLayout}
             lyricsZoom={lyricsZoom}
@@ -223,6 +267,10 @@ function JukeboxInner() {
             artistId={selectedArtistId}
             onNavigate={navigate}
             onBack={goBack}
+            bioHeight={artistBioHeight}
+            albumHeight={artistAlbumHeight}
+            similarHeight={artistSimilarHeight}
+            trackWidth={artistTrackWidth}
           />
         )}
         {view === 'album-detail' && (
@@ -258,11 +306,21 @@ function JukeboxInner() {
             onJukeboxTitleChange={setJukeboxTitle}
             stationQueueSize={stationQueueSize}
             onStationQueueSizeChange={setStationQueueSize}
+            eqBarHeight={eqBarHeight}
+            onEqBarHeightChange={setEqBarHeight}
+            artistBioHeight={artistBioHeight}
+            onArtistBioHeightChange={setArtistBioHeight}
+            artistAlbumHeight={artistAlbumHeight}
+            onArtistAlbumHeightChange={setArtistAlbumHeight}
+            artistSimilarHeight={artistSimilarHeight}
+            onArtistSimilarHeightChange={setArtistSimilarHeight}
+            artistTrackWidth={artistTrackWidth}
+            onArtistTrackWidthChange={setArtistTrackWidth}
           />
         )}
       </main>
 
-      {view !== 'now-playing' && <PlayerBar onNavigate={navigate} />}
+      <PlayerBar onNavigate={navigate} eqBands={eqBands} eqColorScheme={eqColorScheme} eqBarHeight={eqBarHeight} />
       
       <TouchKeyboard
         visible={keyboardVisible}

@@ -12,6 +12,19 @@ interface ArtistDetailViewProps {
   artistId: string;
   onNavigate: (view: ViewType, opts?: any) => void;
   onBack: () => void;
+  bioHeight?: number;
+  albumHeight?: number;
+  similarHeight?: number;
+  trackWidth?: number;
+}
+
+function truncateBio(text: string, maxLen = 200): string {
+  if (text.length <= maxLen) return text;
+  // Try to cut at sentence boundary
+  const trimmed = text.slice(0, maxLen + 50);
+  const lastPeriod = trimmed.lastIndexOf('.');
+  if (lastPeriod > maxLen * 0.5) return trimmed.slice(0, lastPeriod + 1);
+  return text.slice(0, maxLen).trimEnd() + '…';
 }
 
 function formatDuration(ms: number | null | undefined): string {
@@ -22,12 +35,13 @@ function formatDuration(ms: number | null | undefined): string {
   return `${minutes}:${seconds?.toString?.()?.padStart?.(2, '0') ?? '00'}`;
 }
 
-export default function ArtistDetailView({ artistId, onNavigate, onBack }: ArtistDetailViewProps) {
+export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeight = 30, albumHeight = 40, similarHeight = 30, trackWidth = 40 }: ArtistDetailViewProps) {
   const [artist, setArtist] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAllTracks, setShowAllTracks] = useState(false);
   const [bio, setBio] = useState<string | null>(null);
   const [bioLoading, setBioLoading] = useState(false);
+  const [bioExpanded, setBioExpanded] = useState(false);
   const [similarArtists, setSimilarArtists] = useState<any[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
   const { playQueue, addToQueue, playNext } = usePlayer();
@@ -64,7 +78,7 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
     setSimilarLoading(true);
     fetch(`/api/artists/${artistId}/similar`)
       .then(r => r?.json?.())
-      .then(data => { setSimilarArtists(data?.similar ?? []); setSimilarLoading(false); })
+      .then(data => { setSimilarArtists(data?.artists ?? []); setSimilarLoading(false); })
       .catch(() => setSimilarLoading(false));
   }, [artistId]);
 
@@ -145,31 +159,40 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
       {/* Main content: left panel + right tracks panel */}
       <div className="flex-1 min-h-0 flex gap-4">
         {/* Left panel: bio, albums, similar */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-hidden">
-          {/* Bio section - compact top area */}
-          <div className="flex gap-4 items-start flex-shrink-0 max-h-[30%] overflow-hidden">
-            <div className="w-24 h-24 rounded-full overflow-hidden bg-secondary flex-shrink-0 album-art-glow">
-              <PlexImage thumb={artist?.thumb} alt={artist?.name ?? ''} size={200} />
+        <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-hidden" style={{ width: `${100 - trackWidth}%` }}>
+          {/* Bio section */}
+          <div className="flex gap-4 items-start flex-shrink-0 overflow-hidden" style={{ height: `${bioHeight}%` }}>
+            <div className="rounded-lg overflow-hidden bg-secondary flex-shrink-0 album-art-glow" style={{ height: '70%', aspectRatio: '1' }}>
+              <PlexImage thumb={artist?.thumb} alt={artist?.name ?? ''} size={400} />
             </div>
             <div className="flex-1 min-w-0 overflow-y-auto scrollbar-none max-h-full">
               <p className="text-xs text-muted-foreground mb-1">
                 {artist?.cachedAlbums?.length ?? 0} albums / {artist?.cachedTracks?.length ?? 0} tracks
               </p>
               {bioLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading bio...
                 </div>
               ) : bio ? (
-                <p className="text-sm text-muted-foreground leading-relaxed">{bio}</p>
+                <div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {bioExpanded ? bio : truncateBio(bio)}
+                  </p>
+                  {bio.length > 200 && (
+                    <button onClick={() => setBioExpanded(!bioExpanded)} className="text-xs text-primary hover:underline mt-1">
+                      {bioExpanded ? 'Show less' : 'See more'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground italic">No biography available</p>
               )}
             </div>
           </div>
 
-          {/* Albums carousel - middle section */}
+          {/* Albums carousel */}
           {(artist?.cachedAlbums?.length ?? 0) > 0 && (
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="min-h-0 flex flex-col" style={{ height: `${albumHeight}%` }}>
               <div className="flex items-center gap-2 mb-2 flex-shrink-0">
                 <Disc className="w-4 h-4 text-primary" />
                 <h3 className="text-sm font-display font-semibold">Albums</h3>
@@ -187,10 +210,9 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
                   <button
                     key={album?.id ?? ''}
                     onClick={() => onNavigate?.('album-detail', { albumId: album?.id })}
-                    className="flex-shrink-0 text-left group"
-                    style={{ width: 'clamp(120px, 12vw, 180px)' }}
+                    className="flex-shrink-0 text-left group h-full"
                   >
-                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-secondary mb-1.5 group-active:ring-2 group-active:ring-primary/50 transition-all">
+                    <div className="rounded-lg overflow-hidden bg-secondary mb-1.5 group-active:ring-2 group-active:ring-primary/50 transition-all" style={{ height: '70%', aspectRatio: '1' }}>
                       <PlexImage thumb={album?.thumb} alt={album?.title ?? ''} size={300} />
                     </div>
                     <p className="text-xs font-medium truncate">{album?.title ?? ''}</p>
@@ -201,8 +223,8 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
             </div>
           )}
 
-          {/* Similar artists - bottom section */}
-          <div className="flex-shrink-0">
+          {/* Similar artists */}
+          <div className="min-h-0 overflow-hidden" style={{ height: `${similarHeight}%` }}>
             <div className="flex items-center gap-2 mb-2">
               <Users className="w-4 h-4 text-primary" />
               <h3 className="text-sm font-display font-semibold">Similar Artists</h3>
@@ -239,7 +261,7 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack }: Artis
         </div>
 
         {/* Right panel: Track list */}
-        <div className="w-[40%] min-w-[280px] max-w-[500px] flex flex-col bg-secondary/20 rounded-lg border border-border/20 overflow-hidden flex-shrink-0">
+        <div className="flex flex-col bg-secondary/20 rounded-lg border border-border/20 overflow-hidden flex-shrink-0" style={{ width: `${trackWidth}%`, minWidth: '280px' }}>
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border/20 flex-shrink-0">
             <Music2 className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-display font-semibold">
