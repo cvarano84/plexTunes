@@ -412,17 +412,43 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     );
   }
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === 'left' ? -(cardSize + 12) * 2 : (cardSize + 12) * 2, behavior: 'smooth' });
+  };
+
   // ── List view ──
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden px-4 py-3">
-      <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <h2 className="text-[clamp(1.25rem,2.5vw,2rem)] font-display font-bold tracking-tight flex items-center gap-3">
-          <Disc3 className="w-[clamp(1.25rem,2vw,1.75rem)] h-[clamp(1.25rem,2vw,1.75rem)] text-primary" /> Mixes
-        </h2>
-        <button onClick={startNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
-          <Plus className="w-4 h-4" /> New Mix
-        </button>
+    <div className="flex flex-col h-full px-6">
+      {/* Header row */}
+      <div className="flex items-center justify-between py-3 flex-shrink-0">
+        <div>
+          <h2 className="text-[clamp(1.25rem,2.5vw,2rem)] font-display font-bold tracking-tight flex items-center gap-3">
+            <Disc3 className="w-[clamp(1.25rem,2vw,1.75rem)] h-[clamp(1.25rem,2vw,1.75rem)] text-primary" /> Mixes
+          </h2>
+          <p className="text-muted-foreground text-[clamp(0.75rem,1.2vw,1rem)] mt-1">Your custom mixes — Swipe to browse</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => scroll('left')}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center hover:bg-secondary transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => scroll('right')}
+            className="w-10 h-10 rounded-full bg-secondary/70 flex items-center justify-center hover:bg-secondary transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          <button onClick={startNew}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+            <Plus className="w-4 h-4" /> New Mix
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -439,21 +465,34 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
           </button>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden scrollbar-none">
-          <div className="flex gap-3 h-full items-center flex-wrap content-center" style={{ flexWrap: stationRows > 1 ? 'wrap' : 'nowrap' }}>
-            {mixes.map((mix: any) => (
-              <MixCard
-                key={mix.id}
-                mix={mix}
-                onPlay={() => handlePlay(mix)}
-                onEdit={() => startEdit(mix)}
-                onDelete={() => handleDelete(mix.id)}
-                isPlaying={playingMix === mix.id}
-                cardSize={cardSize}
-                stationNames={stationNames}
-                artistThumbs={artistThumbs}
-              />
-            ))}
+        <div ref={containerRef} className="flex-1 flex items-center min-h-0">
+          <div
+            ref={scrollRef}
+            className="flex gap-3 overflow-x-auto scrollbar-none w-full items-center"
+          >
+            {(() => {
+              const cols: any[][] = [];
+              for (let i = 0; i < mixes.length; i += stationRows) {
+                cols.push(mixes.slice(i, i + stationRows));
+              }
+              return cols.map((col, ci) => (
+                <div key={ci} className="flex flex-col gap-3 flex-shrink-0">
+                  {col.map((mix: any, si: number) => (
+                    <MixCard
+                      key={`${ci}-${si}-${mix?.id}`}
+                      mix={mix}
+                      onPlay={() => handlePlay(mix)}
+                      onEdit={() => startEdit(mix)}
+                      onDelete={() => handleDelete(mix.id)}
+                      isPlaying={playingMix === mix.id}
+                      cardSize={cardSize}
+                      stationNames={stationNames}
+                      artistThumbs={artistThumbs}
+                    />
+                  ))}
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}

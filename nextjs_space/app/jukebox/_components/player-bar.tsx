@@ -42,6 +42,7 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
     setPartyBeat,
     partyBeatRate,
     setPartyBeatRate,
+    detectedBpm,
   } = usePlayer();
 
   const [partyPopover, setPartyPopover] = useState(false);
@@ -117,15 +118,14 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
             )}
           </button>
 
-          {/* Party Beat toggle */}
+          {/* Party Beat button */}
           <div className="relative">
             <button
-              onClick={() => setPartyBeat(!partyBeat)}
-              onContextMenu={(e) => { e.preventDefault(); setPartyPopover(p => !p); }}
+              onClick={() => setPartyPopover(p => !p)}
               className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors relative ${
                 partyBeat ? 'bg-pink-600 text-white' : 'text-muted-foreground hover:bg-secondary'
               }`}
-              title={partyBeat ? `Party Beat: ON (${Math.round(partyBeatRate * 100)}%) — right-click to adjust` : 'Party Beat: OFF — tempo shift with key lock'}
+              title="Party Beat — auto tempo to 120-130 BPM"
             >
               <PartyPopper className="w-5 h-5" />
               {partyBeat && (
@@ -141,14 +141,41 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
                   initial={{ opacity: 0, scale: 0.9, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                  className="absolute bottom-14 left-1/2 -translate-x-1/2 z-[100] bg-card border border-border/40 rounded-xl p-3 shadow-2xl min-w-[180px]"
+                  className="absolute bottom-14 left-1/2 -translate-x-1/2 z-[100] bg-card border border-border/40 rounded-xl p-3 shadow-2xl min-w-[220px]"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold">Party Beat Tempo</span>
-                    <button onClick={() => setPartyPopover(false)} className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-secondary">
-                      <X className="w-3 h-3" />
-                    </button>
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <PartyPopper className="w-3.5 h-3.5 text-pink-400" /> Party Beat
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setPartyBeat(!partyBeat)}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${partyBeat ? 'bg-pink-500' : 'bg-secondary'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${partyBeat ? 'left-[18px]' : 'left-0.5'}`} />
+                      </button>
+                      <button onClick={() => setPartyPopover(false)} className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-secondary">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
+                  {/* BPM readout */}
+                  {partyBeat && (
+                    <div className="bg-black/30 rounded-lg p-2 mb-2 text-center">
+                      {detectedBpm ? (
+                        <>
+                          <span className="text-2xl font-bold text-pink-400 tabular-nums">{detectedBpm}</span>
+                          <span className="text-xs text-muted-foreground ml-1">BPM detected</span>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            → Target: 120–130 BPM · Speed: {Math.round(partyBeatRate * 100)}%
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground animate-pulse">Analyzing tempo...</p>
+                      )}
+                    </div>
+                  )}
+                  {/* Manual override slider */}
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPartyBeatRate(partyBeatRate - 0.02)}
@@ -158,7 +185,7 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
                     </button>
                     <div className="flex-1 text-center">
                       <span className="text-lg font-bold tabular-nums">{Math.round(partyBeatRate * 100)}%</span>
-                      <p className="text-[10px] text-muted-foreground">Speed (pitch locked)</p>
+                      <p className="text-[10px] text-muted-foreground">Speed (key locked)</p>
                     </div>
                     <button
                       onClick={() => setPartyBeatRate(partyBeatRate + 0.02)}

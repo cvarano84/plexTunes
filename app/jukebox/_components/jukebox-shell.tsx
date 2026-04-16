@@ -18,6 +18,7 @@ import SettingsView from './settings-view';
 import StatsView from './stats-view';
 import MixesView from './mixes-view';
 import TouchKeyboard from './touch-keyboard';
+import AnimatedBackground, { type BgStyle } from './animated-background';
 
 export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats' | 'mixes';
 
@@ -46,6 +47,8 @@ function JukeboxInner() {
   const [artistAlbumHeight, setArtistAlbumHeight] = useState(55);
   const [artistSimilarHeight, setArtistSimilarHeight] = useState(25);
   const [artistTrackWidth, setArtistTrackWidth] = useState(25);
+  const [bgStyle, setBgStyle] = useState<BgStyle>('none');
+  const [bgMusicReactive, setBgMusicReactive] = useState(true);
   const settingsLoadedRef = useRef(false);
   
   // Touch keyboard
@@ -79,6 +82,8 @@ function JukeboxInner() {
         if (s.artistAlbumHeight !== undefined) setArtistAlbumHeight(s.artistAlbumHeight);
         if (s.artistSimilarHeight !== undefined) setArtistSimilarHeight(s.artistSimilarHeight);
         if (s.artistTrackWidth !== undefined) setArtistTrackWidth(s.artistTrackWidth);
+        if (s.bgStyle) setBgStyle(s.bgStyle);
+        if (s.bgMusicReactive !== undefined) setBgMusicReactive(s.bgMusicReactive);
       }
     } catch { /* ignore */ }
     // Then fetch from server (source of truth)
@@ -111,20 +116,22 @@ function JukeboxInner() {
       idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout,
       artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight,
       artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth,
+      bgStyle, bgMusicReactive,
     };
     // Always write to localStorage for fast reads
     try { localStorage.setItem('jukebox-settings', JSON.stringify(settingsObj)); } catch { /* ignore */ }
-    // Debounce server save
+    // Debounce server save (only DB-backed settings)
     if (!settingsLoadedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const { bgStyle: _bs, bgMusicReactive: _bm, ...dbSettings } = settingsObj;
     saveTimerRef.current = setTimeout(() => {
       fetch('/api/jukebox-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settingsObj),
+        body: JSON.stringify(dbSettings),
       }).catch(() => {});
     }, 1000);
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight, artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight, artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth, bgStyle, bgMusicReactive]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -268,7 +275,8 @@ function JukeboxInner() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background hero-gradient overflow-hidden">
+    <div className="h-screen flex flex-col bg-background hero-gradient overflow-hidden relative">
+      <AnimatedBackground style={bgStyle} musicReactive={bgMusicReactive} />
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} jukeboxTitle={jukeboxTitle} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
@@ -341,6 +349,10 @@ function JukeboxInner() {
             onArtistSimilarHeightChange={setArtistSimilarHeight}
             artistTrackWidth={artistTrackWidth}
             onArtistTrackWidthChange={setArtistTrackWidth}
+            bgStyle={bgStyle}
+            onBgStyleChange={setBgStyle}
+            bgMusicReactive={bgMusicReactive}
+            onBgMusicReactiveChange={setBgMusicReactive}
           />
         )}
       </main>

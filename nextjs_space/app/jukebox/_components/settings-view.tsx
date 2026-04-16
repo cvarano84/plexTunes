@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap, SlidersHorizontal } from 'lucide-react';
+import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SettingsViewProps {
@@ -37,6 +37,10 @@ interface SettingsViewProps {
   onArtistSimilarHeightChange: (val: number) => void;
   artistTrackWidth: number;
   onArtistTrackWidthChange: (val: number) => void;
+  bgStyle: string;
+  onBgStyleChange: (val: any) => void;
+  bgMusicReactive: boolean;
+  onBgMusicReactiveChange: (val: boolean) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -425,6 +429,8 @@ export default function SettingsView({
   artistAlbumHeight, onArtistAlbumHeightChange,
   artistSimilarHeight, onArtistSimilarHeightChange,
   artistTrackWidth, onArtistTrackWidthChange,
+  bgStyle, onBgStyleChange,
+  bgMusicReactive, onBgMusicReactiveChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1145,6 +1151,53 @@ export default function SettingsView({
               <span className="text-sm font-mono w-16 text-right">{artistTrackWidth}%</span>
             </div>
           </div>
+        </div>
+      </motion.div>
+
+      {/* Animated Background */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-accent" />
+          Animated Background
+        </h3>
+        <div className="grid gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {([
+              { value: 'none', label: 'None', emoji: '⬛' },
+              { value: 'aurora', label: 'Aurora', emoji: '🌌' },
+              { value: 'particles', label: 'Particles', emoji: '✨' },
+              { value: 'waves', label: 'Waves', emoji: '🌊' },
+              { value: 'nebula', label: 'Nebula', emoji: '🟣' },
+              { value: 'gradient-flow', label: 'Gradient', emoji: '🎨' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => onBgStyleChange(opt.value)}
+                className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                  bgStyle === opt.value
+                    ? 'border-accent bg-accent/20 ring-1 ring-accent'
+                    : 'border-border/30 bg-secondary/30 hover:bg-secondary/50'
+                }`}
+              >
+                <span className="text-xl">{opt.emoji}</span>
+                <span className="text-xs font-medium">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          {bgStyle !== 'none' && (
+            <label className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border/20 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={bgMusicReactive}
+                onChange={e => onBgMusicReactiveChange(e.target.checked)}
+                className="w-4 h-4 rounded accent-accent"
+              />
+              <div>
+                <span className="text-sm font-medium">Music Reactive</span>
+                <p className="text-xs text-muted-foreground">Background responds to audio energy</p>
+              </div>
+            </label>
+          )}
         </div>
       </motion.div>
 

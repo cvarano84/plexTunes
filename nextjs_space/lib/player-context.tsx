@@ -93,6 +93,7 @@ interface PlayerContextType extends PlayerState {
   setPartyBeat: (enabled: boolean) => void;
   partyBeatRate: number;
   setPartyBeatRate: (rate: number) => void;
+  detectedBpm: number | null;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -123,8 +124,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [advancedEqGains, setAdvancedEqGains] = useState<number[]>(new Array(10).fill(0));
   const [advancedEqPreset, setAdvancedEqPresetState] = useState('flat');
   const [sweetFades, setSweetFadesState] = useState(false);
+  const [deckSwap, setDeckSwap] = useState(0); // increments on each crossfade deck swap
   const [partyBeat, setPartyBeatState] = useState(false);
-  const [partyBeatRate, setPartyBeatRateState] = useState(1.08); // ~108% speed, good for dance feel
+  const [partyBeatRate, setPartyBeatRateState] = useState(1.08);
+  const [detectedBpm, setDetectedBpm] = useState<number | null>(null);
+  const bpmDetectorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -144,13 +148,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // This MUST live in the provider so it persists across view changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || sourceNodeRef.current) return;
+    const crossAudio = crossfadeAudioRef.current;
+    if (!audio || !crossAudio || sourceNodeRef.current) return;
 
     const initAudio = () => {
       if (sourceNodeRef.current) return; // already initialized
       try {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        // Dual-deck: create sources for BOTH audio elements
         const source = ctx.createMediaElementSource(audio);
+        const crossSource = ctx.createMediaElementSource(crossAudio);
 
         // 3-band EQ: lowshelf (bass), peaking (mid), highshelf (treble)
         const bassFilter = ctx.createBiquadFilter();
@@ -183,8 +190,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.7;
 
-        // Chain: source -> bass -> mid -> treble -> [10 bands] -> analyser -> destination
+        // Dual-deck: both sources feed into shared EQ chain
+        // Chain: [source + crossSource] -> bass -> mid -> treble -> [10 bands] -> analyser -> destination
         source.connect(bassFilter);
+        crossSource.connect(bassFilter);
         bassFilter.connect(midFilter);
         midFilter.connect(trebleFilter);
         let lastNode: AudioNode = trebleFilter;
@@ -197,6 +206,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         audioContextRef.current = ctx;
         sourceNodeRef.current = source;
+        crossfadeSourceRef.current = crossSource;
         eqNodesRef.current = { bass: bassFilter, mid: midFilter, treble: trebleFilter };
         advancedEqNodesRef.current = advFilters;
         setAnalyserNode(analyser);
@@ -307,6 +317,90 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [partyBeat]);
 
+  // BPM detection from analyser data — runs when party beat is on + music is playing
+  useEffect(() => {
+    if (!partyBeat || !isPlaying || !analyserNode) {
+      if (bpmDetectorRef.current) { clearInterval(bpmDetectorRef.current); bpmDetectorRef.current = null; }
+      return;
+    }
+    // Onset detection: track energy peaks in low-freq bins
+    const bufLen = analyserNode.frequencyBinCount;
+    const dataArr = new Uint8Array(bufLen);
+    let prevEnergy = 0;
+    const onsetTimes: number[] = [];
+    const TARGET_MIN = 120;
+    const TARGET_MAX = 130;
+
+    bpmDetectorRef.current = setInterval(() => {
+      analyserNode.getByteFrequencyData(dataArr);
+      // Low-freq energy (first ~20% of bins = roughly 0-2kHz kick/bass range)
+      const lowBins = Math.max(4, Math.floor(bufLen * 0.2));
+      let energy = 0;
+      for (let i = 0; i < lowBins; i++) energy += dataArr[i];
+      energy /= lowBins;
+
+      // Detect onset: significant rise in energy
+      const threshold = 15;
+      if (energy - prevEnergy > threshold && energy > 80) {
+        const now = performance.now();
+        onsetTimes.push(now);
+        // Keep only last 20 seconds of onsets
+        while (onsetTimes.length > 0 && now - onsetTimes[0] > 20000) onsetTimes.shift();
+      }
+      prevEnergy = energy * 0.7 + prevEnergy * 0.3; // smooth
+
+      // Need at least 8 onsets to estimate BPM
+      if (onsetTimes.length >= 8) {
+        // Calculate intervals
+        const intervals: number[] = [];
+        for (let i = 1; i < onsetTimes.length; i++) {
+          intervals.push(onsetTimes[i] - onsetTimes[i - 1]);
+        }
+        // Filter out outliers (keep 50-500ms = 120-1200 BPM single-beat range)
+        const valid = intervals.filter(d => d > 50 && d < 500);
+        if (valid.length >= 4) {
+          // Median interval
+          valid.sort((a, b) => a - b);
+          const median = valid[Math.floor(valid.length / 2)];
+          const rawBpm = 60000 / median;
+          // Normalize to reasonable range: if half-time or double-time, adjust
+          let bpm = rawBpm;
+          while (bpm < 70) bpm *= 2;
+          while (bpm > 200) bpm /= 2;
+          
+          setDetectedBpm(Math.round(bpm));
+          
+          // Auto-calculate rate to bring song into target range
+          const targetBpm = Math.min(TARGET_MAX, Math.max(TARGET_MIN, bpm)); // clamp to range
+          const desiredBpm = bpm < TARGET_MIN ? TARGET_MIN : bpm > TARGET_MAX ? TARGET_MAX : bpm;
+          const rate = desiredBpm / bpm;
+          const clampedRate = Math.max(0.8, Math.min(1.3, rate));
+          // Only update if significantly different from current
+          setPartyBeatRateState(prev => {
+            if (Math.abs(prev - clampedRate) > 0.005) {
+              const audio = audioRef.current;
+              if (audio) { audio.preservesPitch = true; audio.playbackRate = clampedRate; }
+              const xAudio = crossfadeAudioRef.current;
+              if (xAudio && xAudio.src) { xAudio.preservesPitch = true; xAudio.playbackRate = clampedRate; }
+              try { localStorage.setItem('jukebox_party_beat_rate', String(clampedRate)); } catch { /* */ }
+              return clampedRate;
+            }
+            return prev;
+          });
+        }
+      }
+    }, 50); // 20Hz analysis rate
+
+    return () => {
+      if (bpmDetectorRef.current) { clearInterval(bpmDetectorRef.current); bpmDetectorRef.current = null; }
+    };
+  }, [partyBeat, isPlaying, analyserNode, deckSwap]);
+
+  // Reset BPM detection when track changes
+  useEffect(() => {
+    setDetectedBpm(null);
+  }, [currentTrack?.id]);
+
   // Apply party beat rate when new track loads
   useEffect(() => {
     const audio = audioRef.current;
@@ -321,7 +415,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
     audio.addEventListener('loadeddata', applyRate);
     return () => audio.removeEventListener('loadeddata', applyRate);
-  }, [partyBeat, partyBeatRate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyBeat, partyBeatRate, deckSwap]);
 
   // Resume AudioContext whenever playback starts
   useEffect(() => {
@@ -673,21 +768,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (step >= STEPS) {
         if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
         crossfadeTimerRef.current = null;
-        // Transition complete - transfer crossfade audio to main
+        // Transition complete — swap decks (no re-loading, no stutter)
         mainAudio.pause();
-        // Copy crossfade playback state to main audio so it continues seamlessly
-        const cfSrc = crossAudio.src;
-        const cfTime = crossAudio.currentTime;
-        // Stop crossfade audio
-        crossAudio.pause();
-        crossAudio.removeAttribute('src');
-        crossAudio.load();
-        // Load the same stream on main audio at the same position
-        mainAudio.src = cfSrc;
-        mainAudio.currentTime = cfTime;
-        mainAudio.volume = volume;
-        mainAudio.play?.()?.catch?.(() => {});
+        mainAudio.removeAttribute('src');
+        mainAudio.load();
+        // Crossfade audio is already playing the next track at full volume
+        crossAudio.volume = volume;
+        // Swap the audio element refs so crossfade becomes main
+        const tempEl = audioRef.current;
+        audioRef.current = crossfadeAudioRef.current;
+        crossfadeAudioRef.current = tempEl;
+        // Also swap source node refs for consistency
+        const tempSrc = sourceNodeRef.current;
+        sourceNodeRef.current = crossfadeSourceRef.current;
+        crossfadeSourceRef.current = tempSrc;
         crossfadingRef.current = false;
+        // Force re-attachment of event listeners to new active audio element
+        setDeckSwap(c => c + 1);
         // Advance queue index without re-triggering the media load effect
         skipLoadRef.current = true;
         nextTrack();
@@ -727,7 +824,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [nextTrack, startCrossfade]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextTrack, startCrossfade, deckSwap]);
 
   return (
     <PlayerContext.Provider
@@ -772,6 +870,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setPartyBeat,
         partyBeatRate,
         setPartyBeatRate,
+        detectedBpm,
       }}
     >
       {children}
