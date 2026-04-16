@@ -83,6 +83,8 @@ interface PlayerContextType extends PlayerState {
   setAdvancedEqGain: (index: number, value: number) => void;
   setAdvancedEqPreset: (name: string) => void;
   advancedEqPreset: string;
+  sweetFades: boolean;
+  setSweetFades: (enabled: boolean) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -111,11 +113,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [eqMode, setEqModeState] = useState<'simple' | 'advanced'>('simple');
   const [advancedEqGains, setAdvancedEqGains] = useState<number[]>(new Array(10).fill(0));
   const [advancedEqPreset, setAdvancedEqPresetState] = useState('flat');
+  const [sweetFades, setSweetFadesState] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const crossfadingRef = useRef(false);
   const fetchingMoreRef = useRef(false);
   // Persistent Web Audio refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const crossfadeSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const crossfadeGainRef = useRef<GainNode | null>(null);
+  const mainGainRef = useRef<GainNode | null>(null);
   const eqNodesRef = useRef<{ bass: BiquadFilterNode; mid: BiquadFilterNode; treble: BiquadFilterNode } | null>(null);
   const advancedEqNodesRef = useRef<BiquadFilterNode[] | null>(null);
 
@@ -239,6 +248,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('pointerdown', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
     };
+  }, []);
+
+  // Load sweet fades setting from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jukebox_sweet_fades');
+      if (saved === 'true') setSweetFadesState(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const setSweetFades = useCallback((enabled: boolean) => {
+    setSweetFadesState(enabled);
+    try { localStorage.setItem('jukebox_sweet_fades', enabled ? 'true' : 'false'); } catch { /* ignore */ }
   }, []);
 
   // Resume AudioContext whenever playback starts
@@ -495,13 +517,82 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isPlaying]);
 
+  // Sweet Fades crossfade logic
+  const sweetFadesRef = useRef(sweetFades);
+  useEffect(() => { sweetFadesRef.current = sweetFades; }, [sweetFades]);
+  const queueRef = useRef(queue);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  const queueIndexRef = useRef(queueIndex);
+  useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
+
+  const startCrossfade = useCallback(() => {
+    if (crossfadingRef.current) return;
+    const q = queueRef.current;
+    const idx = queueIndexRef.current;
+    const nextIdx = idx + 1;
+    if (nextIdx >= q.length) return;
+
+    const nextT = q[nextIdx];
+    if (!nextT?.mediaKey) return;
+    
+    const crossAudio = crossfadeAudioRef.current;
+    const mainAudio = audioRef.current;
+    if (!crossAudio || !mainAudio) return;
+
+    crossfadingRef.current = true;
+
+    // Setup crossfade audio
+    crossAudio.src = `/api/plex/stream?key=${encodeURIComponent(nextT.mediaKey)}`;
+    crossAudio.volume = 0;
+    crossAudio.play?.()?.catch?.(() => {});
+
+    const FADE_DURATION = 6000; // 6 seconds crossfade
+    const STEPS = 60;
+    const stepTime = FADE_DURATION / STEPS;
+    let step = 0;
+
+    if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
+    crossfadeTimerRef.current = setInterval(() => {
+      step++;
+      const progress = Math.min(step / STEPS, 1);
+      // Sine curve for smooth DJ-like fade
+      const fadeOut = Math.cos(progress * Math.PI / 2);
+      const fadeIn = Math.sin(progress * Math.PI / 2);
+      
+      if (mainAudio) mainAudio.volume = fadeOut * volume;
+      if (crossAudio) crossAudio.volume = fadeIn * volume;
+
+      if (step >= STEPS) {
+        if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
+        crossfadeTimerRef.current = null;
+        // Transition complete - swap to next track
+        mainAudio.pause();
+        crossfadingRef.current = false;
+        // Advance to next track
+        nextTrack();
+      }
+    }, stepTime);
+  }, [volume, nextTrack]);
+
   useEffect(() => {
     const audio = audioRef?.current;
     if (!audio) return;
 
-    const onTimeUpdate = () => setCurrentTime(audio?.currentTime ?? 0);
+    const onTimeUpdate = () => {
+      const ct = audio?.currentTime ?? 0;
+      setCurrentTime(ct);
+      // Sweet Fades: start crossfade 8 seconds before end
+      if (sweetFadesRef.current && !crossfadingRef.current && audio.duration > 15) {
+        const remaining = audio.duration - ct;
+        if (remaining <= 8 && remaining > 0) {
+          startCrossfade();
+        }
+      }
+    };
     const onDurationChange = () => setDuration(audio?.duration ?? 0);
-    const onEnded = () => nextTrack();
+    const onEnded = () => {
+      if (!crossfadingRef.current) nextTrack();
+    };
     const onError = () => console.error('Audio playback error');
 
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -515,7 +606,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [nextTrack]);
+  }, [nextTrack, startCrossfade]);
 
   return (
     <PlayerContext.Provider
@@ -552,10 +643,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setAdvancedEqGain,
         setAdvancedEqPreset,
         advancedEqPreset,
+        sweetFades,
+        setSweetFades,
       }}
     >
       {children}
       <audio ref={audioRef} preload="auto" />
+      <audio ref={crossfadeAudioRef} preload="auto" />
     </PlayerContext.Provider>
   );
 }

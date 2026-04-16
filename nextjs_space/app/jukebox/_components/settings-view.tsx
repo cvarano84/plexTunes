@@ -162,6 +162,88 @@ function TripleSlider({ value, onChange }: { value: string; onChange: (val: stri
   );
 }
 
+// Three-way slider for artist detail section heights (Bio / Albums / Similar)
+function ArtistHeightSlider({ bio, albums, similar, onChange }: { bio: number; albums: number; similar: number; onChange: (bio: number, albums: number, similar: number) => void }) {
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const draggingRef = React.useRef<'top' | 'bottom' | null>(null);
+
+  // Normalize to 100%
+  const total = bio + albums + similar;
+  const nBio = Math.round((bio / total) * 100);
+  const nSimilar = Math.round((similar / total) * 100);
+  const nAlbums = 100 - nBio - nSimilar;
+
+  const divider1 = nBio;
+  const divider2 = nBio + nAlbums;
+
+  const updateFromPointer = React.useCallback((clientX: number) => {
+    const el = trackRef.current;
+    if (!el || !draggingRef.current) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+    let d1 = divider1, d2 = divider2;
+    if (draggingRef.current === 'top') {
+      d1 = Math.min(pct, d2 - 10);
+    } else {
+      d2 = Math.max(pct, d1 + 10);
+    }
+    const b = Math.round(d1);
+    const s = Math.round(100 - d2);
+    const a = 100 - b - s;
+    onChange(b, a, s);
+  }, [divider1, divider2, onChange]);
+
+  const handlePointerDown = (handle: 'top' | 'bottom') => (e: React.PointerEvent) => {
+    e.preventDefault();
+    draggingRef.current = handle;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = React.useCallback((e: React.PointerEvent) => {
+    if (draggingRef.current) updateFromPointer(e.clientX);
+  }, [updateFromPointer]);
+
+  const handlePointerUp = React.useCallback(() => {
+    draggingRef.current = null;
+  }, []);
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative h-10 rounded-lg overflow-hidden cursor-pointer touch-none select-none"
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      <div className="absolute inset-0 flex">
+        <div className="h-full bg-violet-600/40 flex items-center justify-center" style={{ width: `${nBio}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Bio {nBio}%</span>
+        </div>
+        <div className="h-full bg-cyan-600/40 flex items-center justify-center" style={{ width: `${nAlbums}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Albums {nAlbums}%</span>
+        </div>
+        <div className="h-full bg-amber-600/40 flex items-center justify-center" style={{ width: `${nSimilar}%` }}>
+          <span className="text-[10px] font-mono text-white/80">Similar {nSimilar}%</span>
+        </div>
+      </div>
+      <div
+        className="absolute top-0 bottom-0 w-4 -ml-2 cursor-col-resize z-10 flex items-center justify-center"
+        style={{ left: `${divider1}%` }}
+        onPointerDown={handlePointerDown('top')}
+      >
+        <div className="w-1 h-6 rounded-full bg-white shadow-lg" />
+      </div>
+      <div
+        className="absolute top-0 bottom-0 w-4 -ml-2 cursor-col-resize z-10 flex items-center justify-center"
+        style={{ left: `${divider2}%` }}
+        onPointerDown={handlePointerDown('bottom')}
+      >
+        <div className="w-1 h-6 rounded-full bg-white shadow-lg" />
+      </div>
+    </div>
+  );
+}
+
 function MetadataDashboard() {
   const [metaStatus, setMetaStatus] = React.useState<any>(null);
   const [metaLoading, setMetaLoading] = React.useState(true);
@@ -1042,28 +1124,18 @@ export default function SettingsView({
         </h3>
         <div className="space-y-3">
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-            <label className="text-sm font-medium">Bio Section Height</label>
-            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for artist photo & bio</p>
-            <div className="flex items-center gap-3">
-              <input type="range" min="15" max="50" step="5" value={artistBioHeight} onChange={(e) => onArtistBioHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
-              <span className="text-sm font-mono w-16 text-right">{artistBioHeight}%</span>
-            </div>
-          </div>
-          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-            <label className="text-sm font-medium">Albums Section Height</label>
-            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for album carousel</p>
-            <div className="flex items-center gap-3">
-              <input type="range" min="20" max="60" step="5" value={artistAlbumHeight} onChange={(e) => onArtistAlbumHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
-              <span className="text-sm font-mono w-16 text-right">{artistAlbumHeight}%</span>
-            </div>
-          </div>
-          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-            <label className="text-sm font-medium">Similar Artists Height</label>
-            <p className="text-xs text-muted-foreground mb-2">Percentage of page height for similar artists</p>
-            <div className="flex items-center gap-3">
-              <input type="range" min="15" max="50" step="5" value={artistSimilarHeight} onChange={(e) => onArtistSimilarHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
-              <span className="text-sm font-mono w-16 text-right">{artistSimilarHeight}%</span>
-            </div>
+            <label className="text-sm font-medium">Section Heights</label>
+            <p className="text-xs text-muted-foreground mb-2">Drag handles to adjust Bio / Albums / Similar sections (must total 100%)</p>
+            <ArtistHeightSlider
+              bio={artistBioHeight}
+              albums={artistAlbumHeight}
+              similar={artistSimilarHeight}
+              onChange={(bio, albums, similar) => {
+                onArtistBioHeightChange(bio);
+                onArtistAlbumHeightChange(albums);
+                onArtistSimilarHeightChange(similar);
+              }}
+            />
           </div>
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
             <label className="text-sm font-medium">Track List Width</label>

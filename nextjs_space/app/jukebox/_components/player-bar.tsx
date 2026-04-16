@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -36,6 +36,8 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
     seek,
     queue,
     analyserNode,
+    sweetFades,
+    setSweetFades,
   } = usePlayer();
 
   const [qrOpen, setQrOpen] = useState(false);
@@ -94,6 +96,20 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
         <div className="px-4 h-20 flex items-center gap-4">
           {/* Audio controls: volume + EQ (far left) */}
           <AudioControls compact />
+
+          {/* Sweet Fades toggle */}
+          <button
+            onClick={() => setSweetFades(!sweetFades)}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors relative ${
+              sweetFades ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-secondary'
+            }`}
+            title={sweetFades ? 'Sweet Fades: ON' : 'Sweet Fades: OFF'}
+          >
+            <Waves className="w-5 h-5" />
+            {sweetFades && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />
+            )}
+          </button>
 
           {/* Track info */}
           <button

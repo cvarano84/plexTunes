@@ -147,5 +147,6 @@ model JukeboxSettings {
   artistAlbumHeight   Int      @default(40)
   artistSimilarHeight Int      @default(30)
   artistTrackWidth    Int      @default(40)
+  sweetFades          Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }

@@ -73,6 +73,8 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     return () => ro.disconnect();
   }, [artistRows]);
 
+  const allArtistsRef = useRef<any[]>([]);
+
   const fetchArtists = useCallback(async (pageNum: number, searchStr: string, _letterFilter: string, append: boolean) => {
     if (append) {
       setLoadingMore(true);
@@ -82,7 +84,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     try {
       const params = new URLSearchParams({
         page: pageNum.toString(),
-        limit: '100',
+        limit: searchStr ? '100' : '5000',
       });
       // Only use search filter - letter tap scrolls instead of filtering
       if (searchStr) {
@@ -93,12 +95,15 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       const newArtists = data?.artists ?? [];
       const totalPages = data?.totalPages ?? 1;
       setTotal(data?.total ?? 0);
-      setHasMore(pageNum < totalPages);
+      setHasMore(searchStr ? pageNum < totalPages : false);
       if (append) {
-        setArtists(prev => [...prev, ...newArtists]);
+        const merged = [...artists, ...newArtists];
+        setArtists(merged);
+        allArtistsRef.current = merged;
       } else {
         setArtists(newArtists);
-        // Scroll back to start when changing letter/search
+        allArtistsRef.current = newArtists;
+        // Scroll back to start when changing search
         if (scrollRef.current) scrollRef.current.scrollLeft = 0;
       }
     } catch {
@@ -107,7 +112,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [artists]);
 
   // Fetch when search changes (letter tap only scrolls, doesn't re-fetch)
   useEffect(() => {
@@ -148,8 +153,9 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       return;
     }
     setSearch('');
-    // Find position of first artist starting with this letter and scroll to it
-    const idx = artists.findIndex(a => (a?.name ?? '').toUpperCase().startsWith(letter));
+    // Use the full artist list to find the position
+    const list = allArtistsRef.current.length > 0 ? allArtistsRef.current : artists;
+    const idx = list.findIndex(a => (a?.name ?? '').toUpperCase().startsWith(letter));
     if (idx >= 0 && scrollRef.current) {
       const colIdx = Math.floor(idx / artistRows);
       const scrollTarget = colIdx * (itemSize + 12); // item width + gap

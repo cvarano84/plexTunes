@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Play, Plus, Loader2, Disc, Music2, Star, ListPlus, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
@@ -44,6 +44,9 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
   const [bioExpanded, setBioExpanded] = useState(false);
   const [similarArtists, setSimilarArtists] = useState<any[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
+  const [selectedAlbum, setSelectedAlbum] = useState<any>(null);
+  const [albumTracks, setAlbumTracks] = useState<any[]>([]);
+  const [albumTracksLoading, setAlbumTracksLoading] = useState(false);
   const { playQueue, addToQueue, playNext } = usePlayer();
   const albumScrollRef = useRef<HTMLDivElement>(null);
 
@@ -100,6 +103,30 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
       playQueue(tracks);
       toast.success(`Playing ${artist?.name ?? 'Artist'}`);
     }
+  };
+
+  const handleAlbumClick = useCallback(async (album: any) => {
+    if (selectedAlbum?.id === album?.id) {
+      // Deselect = go back to popular tracks
+      setSelectedAlbum(null);
+      setAlbumTracks([]);
+      return;
+    }
+    setSelectedAlbum(album);
+    setAlbumTracksLoading(true);
+    try {
+      const res = await fetch(`/api/albums/${album.id}`);
+      const data = await res?.json?.();
+      setAlbumTracks(data?.cachedTracks ?? data?.album?.cachedTracks ?? []);
+    } catch {
+      setAlbumTracks([]);
+    }
+    setAlbumTracksLoading(false);
+  }, [selectedAlbum?.id]);
+
+  const handleBackToPopular = () => {
+    setSelectedAlbum(null);
+    setAlbumTracks([]);
   };
 
   const scrollAlbums = (dir: 'left' | 'right') => {
@@ -209,8 +236,8 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
                 {(artist?.cachedAlbums ?? [])?.map?.((album: any) => (
                   <button
                     key={album?.id ?? ''}
-                    onClick={() => onNavigate?.('album-detail', { albumId: album?.id })}
-                    className="flex-shrink-0 text-left group h-full"
+                    onClick={() => handleAlbumClick(album)}
+                    className={`flex-shrink-0 text-left group h-full transition-all ${selectedAlbum?.id === album?.id ? 'ring-2 ring-primary rounded-lg' : ''}`}
                   >
                     <div className="rounded-lg overflow-hidden bg-secondary mb-1.5 group-active:ring-2 group-active:ring-primary/50 transition-all" style={{ height: '70%', aspectRatio: '1' }}>
                       <PlexImage thumb={album?.thumb} alt={album?.title ?? ''} size={300} />
@@ -263,53 +290,72 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
         {/* Right panel: Track list */}
         <div className="flex flex-col bg-secondary/20 rounded-lg border border-border/20 overflow-hidden flex-shrink-0" style={{ width: `${trackWidth}%`, minWidth: '280px' }}>
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border/20 flex-shrink-0">
-            <Music2 className="w-4 h-4 text-primary" />
-            <h3 className="text-sm font-display font-semibold">
-              {showAllTracks ? 'All Tracks' : 'Popular Tracks'}
-            </h3>
-            <span className="text-xs text-muted-foreground ml-auto">{artist?.cachedTracks?.length ?? 0}</span>
+            {selectedAlbum ? (
+              <>
+                <button onClick={handleBackToPopular} className="flex items-center gap-1 text-xs text-primary active:text-primary/80 transition-colors">
+                  <ArrowLeft className="w-3 h-3" /> Back
+                </button>
+                <Disc className="w-4 h-4 text-primary ml-1" />
+                <h3 className="text-sm font-display font-semibold truncate">{selectedAlbum.title}</h3>
+                <span className="text-xs text-muted-foreground ml-auto">{albumTracks?.length ?? 0}</span>
+              </>
+            ) : (
+              <>
+                <Music2 className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-display font-semibold">
+                  {showAllTracks ? 'All Tracks' : 'Popular Tracks'}
+                </h3>
+                <span className="text-xs text-muted-foreground ml-auto">{artist?.cachedTracks?.length ?? 0}</span>
+              </>
+            )}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
-            {(artist?.cachedTracks ?? [])?.map?.((track: any, i: number) => (
-              <div
-                key={track?.id ?? i}
-                className="flex items-center gap-2 px-3 py-2 border-b border-border/10 active:bg-secondary/60 transition-colors"
-              >
-                <span className="w-5 text-center text-[10px] text-muted-foreground flex-shrink-0">{i + 1}</span>
-                <div className="w-8 h-8 rounded overflow-hidden bg-secondary flex-shrink-0">
-                  <PlexImage thumb={track?.thumb} alt={track?.title ?? ''} size={80} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{track?.title ?? ''}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{track?.albumTitle ?? ''}</p>
-                </div>
-                {(track?.popularity ?? 0) > 0 && (
-                  <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground flex-shrink-0">
-                    <Star className="w-2.5 h-2.5 text-amber-400" />
-                    {track?.popularity}
-                  </div>
-                )}
-                <span className="text-[10px] text-muted-foreground w-8 text-right flex-shrink-0">
-                  {formatDuration(track?.duration)}
-                </span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => { addToQueue(makeTrackInfo(track)); toast.success('Queued'); }}
-                    className="w-7 h-7 rounded flex items-center justify-center bg-secondary text-foreground text-xs active:bg-primary active:text-primary-foreground transition-colors"
-                    title="Add to queue"
-                  >
-                    <ListPlus className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => { playNext(makeTrackInfo(track)); toast.success('Playing next'); }}
-                    className="w-7 h-7 rounded flex items-center justify-center bg-primary text-primary-foreground text-xs active:bg-accent transition-colors"
-                    title="Play next"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+            {albumTracksLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
               </div>
-            )) ?? null}
+            ) : (
+              (selectedAlbum ? albumTracks : (artist?.cachedTracks ?? []))?.map?.((track: any, i: number) => (
+                <div
+                  key={track?.id ?? i}
+                  className="flex items-center gap-2 px-3 py-2 border-b border-border/10 active:bg-secondary/60 transition-colors"
+                >
+                  <span className="w-5 text-center text-[10px] text-muted-foreground flex-shrink-0">{selectedAlbum ? (track?.trackNumber ?? i + 1) : i + 1}</span>
+                  <div className="w-8 h-8 rounded overflow-hidden bg-secondary flex-shrink-0">
+                    <PlexImage thumb={track?.thumb ?? selectedAlbum?.thumb} alt={track?.title ?? ''} size={80} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{track?.title ?? ''}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{selectedAlbum ? (selectedAlbum?.title ?? '') : (track?.albumTitle ?? '')}</p>
+                  </div>
+                  {!selectedAlbum && (track?.popularity ?? 0) > 0 && (
+                    <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground flex-shrink-0">
+                      <Star className="w-2.5 h-2.5 text-amber-400" />
+                      {track?.popularity}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-muted-foreground w-8 text-right flex-shrink-0">
+                    {formatDuration(track?.duration)}
+                  </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => { addToQueue(makeTrackInfo(track)); toast.success('Queued'); }}
+                      className="w-7 h-7 rounded flex items-center justify-center bg-secondary text-foreground text-xs active:bg-primary active:text-primary-foreground transition-colors"
+                      title="Add to queue"
+                    >
+                      <ListPlus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => { playNext(makeTrackInfo(track)); toast.success('Playing next'); }}
+                      className="w-7 h-7 rounded flex items-center justify-center bg-primary text-primary-foreground text-xs active:bg-accent transition-colors"
+                      title="Play next"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )) ?? null
+            )}
           </div>
         </div>
       </div>

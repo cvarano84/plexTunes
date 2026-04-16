@@ -315,15 +315,20 @@ export default function MobilePage() {
   };
 
   /* ─── Artist browse ─── */
-  const fetchArtists = useCallback(async (letter: string | null, page: number) => {
+  const allMobileArtistsRef = useRef<any[]>([]);
+  const artistListRef = useRef<HTMLDivElement>(null);
+
+  const fetchArtists = useCallback(async (_letter: string | null, page: number) => {
     setArtistsLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '30' });
-      if (letter) params.set('search', letter);
+      // Load all artists for scroll support (letter tap scrolls, doesn't filter)
+      const params = new URLSearchParams({ page: String(page), limit: '5000' });
       const res = await fetch(`/api/artists?${params}`);
       const data = await res?.json?.();
-      setArtists(data?.artists ?? []);
-      setArtistTotalPages(data?.totalPages ?? 1);
+      const allArtists = data?.artists ?? [];
+      setArtists(allArtists);
+      allMobileArtistsRef.current = allArtists;
+      setArtistTotalPages(1);
     } catch { setArtists([]); }
     setArtistsLoading(false);
   }, []);
@@ -333,7 +338,7 @@ export default function MobilePage() {
     try {
       const res = await fetch(`/api/artists/${id}`);
       const data = await res?.json?.();
-      setSelectedArtist(data);
+      setSelectedArtist(data?.artist ?? data);
     } catch { setSelectedArtist(null); }
     setArtistDetailLoading(false);
   }, []);
@@ -348,12 +353,12 @@ export default function MobilePage() {
     setAlbumDetailLoading(false);
   }, []);
 
-  // Load artists on tab switch
+  // Load artists on tab switch (load all once, letter tap just scrolls)
   useEffect(() => {
-    if (tab === 'artists' && artistBrowse === 'list') {
-      fetchArtists(artistLetter, artistPage);
+    if (tab === 'artists' && artistBrowse === 'list' && allMobileArtistsRef.current.length === 0) {
+      fetchArtists(null, 1);
     }
-  }, [tab, artistBrowse, artistLetter, artistPage, fetchArtists]);
+  }, [tab, artistBrowse, fetchArtists]);
 
   // Load top played on tab switch
   useEffect(() => {
@@ -573,10 +578,13 @@ export default function MobilePage() {
           <div className="p-4">
             {artistBrowse === 'list' && (
               <>
-                {/* A-Z quick jump */}
+                {/* A-Z quick jump - scrolls to letter instead of filtering */}
                 <div className="flex flex-wrap gap-1 mb-3">
                   <button
-                    onClick={() => { setArtistLetter(null); setArtistPage(1); }}
+                    onClick={() => {
+                      setArtistLetter(null);
+                      artistListRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
+                    }}
                     className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                       !artistLetter ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'
                     }`}
@@ -584,7 +592,19 @@ export default function MobilePage() {
                   {LETTERS.map(l => (
                     <button
                       key={l}
-                      onClick={() => { setArtistLetter(l); setArtistPage(1); }}
+                      onClick={() => {
+                        setArtistLetter(l);
+                        // Scroll to the first artist starting with this letter
+                        const list = allMobileArtistsRef.current.length > 0 ? allMobileArtistsRef.current : artists;
+                        const idx = list.findIndex((a: any) => (a?.name ?? '').toUpperCase().startsWith(l));
+                        if (idx >= 0 && artistListRef.current) {
+                          const items = artistListRef.current.querySelectorAll('[data-artist-idx]');
+                          const targetEl = items[idx] as HTMLElement;
+                          if (targetEl) {
+                            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }
+                      }}
                       className={`w-7 h-7 rounded text-[10px] font-medium transition-colors flex items-center justify-center ${
                         artistLetter === l ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'
                       }`}
@@ -595,10 +615,11 @@ export default function MobilePage() {
                 {artistsLoading ? (
                   <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
                 ) : artists.length > 0 ? (
-                  <div className="space-y-1">
-                    {artists.map((a: any) => (
+                  <div ref={artistListRef} className="space-y-1">
+                    {artists.map((a: any, ai: number) => (
                       <button
                         key={a.id}
+                        data-artist-idx={ai}
                         onClick={() => { fetchArtistDetail(a.id); setArtistBrowse('artist-detail'); }}
                         className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-zinc-900 active:bg-zinc-800 transition-colors text-left"
                       >
@@ -612,22 +633,8 @@ export default function MobilePage() {
                         <ChevronLeft className="w-4 h-4 text-zinc-600 rotate-180" />
                       </button>
                     ))}
-                    {/* Pagination */}
-                    {artistTotalPages > 1 && (
-                      <div className="flex items-center justify-center gap-3 pt-3">
-                        <button
-                          onClick={() => setArtistPage(p => Math.max(1, p - 1))}
-                          disabled={artistPage <= 1}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs disabled:opacity-30"
-                        >Prev</button>
-                        <span className="text-xs text-zinc-500">{artistPage} / {artistTotalPages}</span>
-                        <button
-                          onClick={() => setArtistPage(p => Math.min(artistTotalPages, p + 1))}
-                          disabled={artistPage >= artistTotalPages}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs disabled:opacity-30"
-                        >Next</button>
-                      </div>
-                    )}
+                    {/* Artist count */}
+                    <p className="text-center text-xs text-zinc-600 pt-2">{artists.length} artists</p>
                   </div>
                 ) : (
                   <p className="text-center text-zinc-500 text-sm py-8">No artists found</p>

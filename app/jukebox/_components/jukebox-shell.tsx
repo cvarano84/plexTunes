@@ -179,28 +179,49 @@ function JukeboxInner() {
   }, [router]);
 
   // Publish playback state for mobile remote clients
+  // Use refs for frequently-changing values to avoid recreating the interval
+  const currentTimeRef = useRef(currentTime);
+  const isPlayingRef = useRef(isPlaying);
+  const currentTrackRef = useRef(currentTrack);
+  const playerQueueRef = useRef(playerQueue);
+  const queueIndexRef = useRef(queueIndex);
+  const currentStationNameRef = useRef(currentStationName);
+  const jukeboxTitleRef = useRef(jukeboxTitle);
+  const previousTrackCountRef = useRef(previousTrackCount);
+  const stationQueueSizeRef = useRef(stationQueueSize);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
+  useEffect(() => { playerQueueRef.current = playerQueue; }, [playerQueue]);
+  useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
+  useEffect(() => { currentStationNameRef.current = currentStationName; }, [currentStationName]);
+  useEffect(() => { jukeboxTitleRef.current = jukeboxTitle; }, [jukeboxTitle]);
+  useEffect(() => { previousTrackCountRef.current = previousTrackCount; }, [previousTrackCount]);
+  useEffect(() => { stationQueueSizeRef.current = stationQueueSize; }, [stationQueueSize]);
+
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!currentTrack) return;
+      const track = currentTrackRef.current;
+      if (!track) return;
       fetch('/api/remote/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          currentTrack,
-          isPlaying,
-          currentTime,
+          currentTrack: track,
+          isPlaying: isPlayingRef.current,
+          currentTime: currentTimeRef.current,
           publishedAt: Date.now(),
-          queue: playerQueue.map(t => ({ id: t.id, title: t.title, artistName: t.artistName, thumb: t.thumb, albumTitle: t.albumTitle, duration: t.duration })),
-          queueIndex,
-          currentStationName,
-          jukeboxTitle,
-          previousTrackCount,
-          stationQueueSize,
+          queue: playerQueueRef.current.map(t => ({ id: t.id, title: t.title, artistName: t.artistName, thumb: t.thumb, albumTitle: t.albumTitle, duration: t.duration })),
+          queueIndex: queueIndexRef.current,
+          currentStationName: currentStationNameRef.current,
+          jukeboxTitle: jukeboxTitleRef.current,
+          previousTrackCount: previousTrackCountRef.current,
+          stationQueueSize: stationQueueSizeRef.current,
         }),
       }).catch(() => {});
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
-  }, [currentTrack, isPlaying, playerQueue, queueIndex, currentTime, currentStationName, jukeboxTitle, previousTrackCount, stationQueueSize]);
+  }, []);
 
   // Poll for remote queue additions
   useEffect(() => {
