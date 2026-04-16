@@ -403,11 +403,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentStationId || queueIndex < 0) return;
     const remaining = queue.length - queueIndex - 1;
-    if (remaining <= 3) {
+    // Read station queue size from settings
+    let queueSize = 5;
+    try {
+      const saved = localStorage.getItem('jukebox-settings');
+      if (saved) { const s = JSON.parse(saved); if (typeof s.stationQueueSize === 'number') queueSize = s.stationQueueSize; }
+    } catch { /* ignore */ }
+    if (remaining < queueSize) {
+      const needed = queueSize - remaining;
       const existingIds = new Set(queue.map(t => t.id));
       fetchMoreStationTracks(currentStationId, existingIds).then(newTracks => {
         if (newTracks.length > 0) {
-          setQueue(prev => [...prev, ...newTracks]);
+          setQueue(prev => [...prev, ...newTracks.slice(0, Math.max(needed, 1))]);
         }
       });
     }

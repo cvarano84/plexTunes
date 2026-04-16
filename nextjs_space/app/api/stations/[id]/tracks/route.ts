@@ -16,6 +16,9 @@ function shuffle<T>(arr: T[]): T[] {
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const stationId = params?.id ?? '';
+    const limitParam = _req?.nextUrl?.searchParams?.get?.('limit');
+    const requestedLimit = limitParam ? parseInt(limitParam, 10) : 30;
+    const limit = Math.max(1, Math.min(100, isNaN(requestedLimit) ? 30 : requestedLimit));
     const station = await prisma.station.findUnique({ where: { id: stationId } });
 
     if (!station) {
@@ -40,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         weight: (t.playCount ?? 1) + Math.random() * 5,
       }));
       weighted.sort((a: any, b: any) => b.weight - a.weight);
-      const selected = weighted.slice(0, 30);
+      const selected = weighted.slice(0, limit);
 
       return NextResponse.json({ station, tracks: selected });
     }
@@ -91,7 +94,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       });
 
       const top = sorted.slice(0, 50);
-      const selected = shuffle(top).slice(0, 30);
+      const selected = shuffle(top).slice(0, limit);
 
       return NextResponse.json({ station, tracks: selected });
     }
@@ -120,7 +123,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }) ?? [];
 
     const selected = sorted?.slice?.(0, 50) ?? [];
-    const shuffled = shuffle(selected).slice(0, 30);
+    const shuffled = shuffle(selected).slice(0, limit);
 
     return NextResponse.json({ station, tracks: shuffled });
   } catch (e: any) {

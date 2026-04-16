@@ -25,6 +25,8 @@ interface SettingsViewProps {
   onLyricsZoomChange: (val: number) => void;
   jukeboxTitle: string;
   onJukeboxTitleChange: (val: string) => void;
+  stationQueueSize: number;
+  onStationQueueSizeChange: (val: number) => void;
 }
 
 function StatusBadge({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
@@ -286,6 +288,7 @@ export default function SettingsView({
   stationRows, onStationRowsChange,
   lyricsZoom, onLyricsZoomChange,
   jukeboxTitle, onJukeboxTitleChange,
+  stationQueueSize, onStationQueueSizeChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -920,6 +923,15 @@ export default function SettingsView({
             <div className="flex items-center gap-3">
               <input type="range" min="0" max="20" step="1" value={previousTrackCount} onChange={(e) => onPreviousTrackCountChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-10 text-right">{previousTrackCount}</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Station Queue Size</label>
+            <p className="text-xs text-muted-foreground mb-2">How many upcoming songs to keep queued when playing a station</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="2" max="30" step="1" value={stationQueueSize} onChange={(e) => onStationQueueSizeChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-10 text-right">{stationQueueSize}</span>
             </div>
           </div>
 

@@ -11,6 +11,7 @@ import PlexImage from './plex-image';
 interface StationsViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   stationRows?: number;
+  stationQueueSize?: number;
 }
 
 const DECADE_COLORS: Record<string, string> = {
@@ -104,7 +105,7 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
   );
 }
 
-export default function StationsView({ onNavigate, stationRows = 1 }: StationsViewProps) {
+export default function StationsView({ onNavigate, stationRows = 1, stationQueueSize = 5 }: StationsViewProps) {
   const [stations, setStations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
@@ -206,7 +207,7 @@ export default function StationsView({ onNavigate, stationRows = 1 }: StationsVi
     const stationId = station?.id ?? '';
     setPlayingStation(stationId);
     try {
-      const res = await fetch(`/api/stations/${stationId}/tracks`);
+      const res = await fetch(`/api/stations/${stationId}/tracks?limit=${stationQueueSize}`);
       const data = await res?.json?.();
       const tracks: TrackInfo[] = (data?.tracks ?? [])?.map?.((t: any) => ({
         id: t?.id ?? '',

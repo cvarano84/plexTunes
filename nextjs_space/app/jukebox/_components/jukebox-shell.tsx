@@ -39,6 +39,7 @@ function JukeboxInner() {
   const [stationRows, setStationRows] = useState(1);
   const [lyricsZoom, setLyricsZoom] = useState(3);
   const [jukeboxTitle, setJukeboxTitle] = useState('');
+  const [stationQueueSize, setStationQueueSize] = useState(5);
   
   // Touch keyboard
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -46,7 +47,7 @@ function JukeboxInner() {
 
   // Idle timer
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue } = usePlayer();
+  const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue, currentTime, currentStationName } = usePlayer();
 
   // Load settings from localStorage
   useEffect(() => {
@@ -64,6 +65,7 @@ function JukeboxInner() {
         if (s.stationRows !== undefined) setStationRows(s.stationRows);
         if (s.lyricsZoom !== undefined) setLyricsZoom(s.lyricsZoom);
         if (s.jukeboxTitle !== undefined) setJukeboxTitle(s.jukeboxTitle);
+        if (s.stationQueueSize !== undefined) setStationQueueSize(s.stationQueueSize);
       }
     } catch { /* ignore */ }
   }, []);
@@ -72,10 +74,10 @@ function JukeboxInner() {
   useEffect(() => {
     try {
       localStorage.setItem('jukebox-settings', JSON.stringify({
-        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle
+        idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize
       }));
     } catch { /* ignore */ }
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -140,14 +142,19 @@ function JukeboxInner() {
         body: JSON.stringify({
           currentTrack,
           isPlaying,
-          currentTime: 0, // approximate, updated on interval
-          queue: playerQueue.map(t => ({ title: t.title, artistName: t.artistName, thumb: t.thumb, albumTitle: t.albumTitle })),
-          currentStationName: null,
+          currentTime,
+          publishedAt: Date.now(),
+          queue: playerQueue.map(t => ({ id: t.id, title: t.title, artistName: t.artistName, thumb: t.thumb, albumTitle: t.albumTitle, duration: t.duration })),
+          queueIndex,
+          currentStationName,
+          jukeboxTitle,
+          previousTrackCount,
+          stationQueueSize,
         }),
       }).catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
-  }, [currentTrack, isPlaying, playerQueue]);
+  }, [currentTrack, isPlaying, playerQueue, queueIndex, currentTime, currentStationName, jukeboxTitle, previousTrackCount, stationQueueSize]);
 
   // Poll for remote queue additions
   useEffect(() => {
@@ -199,7 +206,7 @@ function JukeboxInner() {
       
       <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' || view === 'stats' ? 'overflow-hidden' : 'overflow-y-auto pb-32'}`}
       >
-        {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} />}
+        {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
@@ -249,6 +256,8 @@ function JukeboxInner() {
             onLyricsZoomChange={setLyricsZoom}
             jukeboxTitle={jukeboxTitle}
             onJukeboxTitleChange={setJukeboxTitle}
+            stationQueueSize={stationQueueSize}
+            onStationQueueSizeChange={setStationQueueSize}
           />
         )}
       </main>

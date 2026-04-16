@@ -31,6 +31,37 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const trackId = body?.track?.id ?? '';
+
+    // Back-to-back duplicate prevention
+    if (trackId) {
+      // Check last unprocessed remote action
+      const lastAction = await prisma.remoteAction.findFirst({
+        where: { processed: false },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (lastAction) {
+        try {
+          const lastPayload = JSON.parse(lastAction.payload);
+          if (lastPayload?.id === trackId) {
+            return NextResponse.json({ error: 'Cannot add the same song back to back', duplicate: true }, { status: 400 });
+          }
+        } catch { /* ignore parse error */ }
+      }
+
+      // Also check against the last track in the current queue
+      const state = await prisma.nowPlayingState.findUnique({ where: { id: 'default' } });
+      if (state) {
+        try {
+          const parsed = JSON.parse(state.state);
+          const queue = parsed?.queue ?? [];
+          if (queue.length > 0 && queue[queue.length - 1]?.id === trackId) {
+            return NextResponse.json({ error: 'Cannot add the same song back to back', duplicate: true }, { status: 400 });
+          }
+        } catch { /* ignore parse error */ }
+      }
+    }
+
     await prisma.remoteAction.create({
       data: {
         type: body?.type ?? 'add_to_queue',
