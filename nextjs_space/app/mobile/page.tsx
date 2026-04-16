@@ -348,7 +348,7 @@ export default function MobilePage() {
     try {
       const res = await fetch(`/api/albums/${id}`);
       const data = await res?.json?.();
-      setSelectedAlbum(data);
+      setSelectedAlbum(data?.album ?? data);
     } catch { setSelectedAlbum(null); }
     setAlbumDetailLoading(false);
   }, []);

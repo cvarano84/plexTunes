@@ -219,6 +219,8 @@ export default function StationsView({ onNavigate, stationRows = 1, stationQueue
         duration: t?.duration ?? null,
         ratingKey: t?.ratingKey ?? '',
         year: t?.year ?? t?.album?.year ?? null,
+        artistId: t?.artistId ?? null,
+        albumId: t?.albumId ?? null,
       })) ?? [];
 
       if (tracks?.length > 0) {

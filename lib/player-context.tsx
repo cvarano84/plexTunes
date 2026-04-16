@@ -12,6 +12,8 @@ export interface TrackInfo {
   duration: number | null;
   ratingKey: string;
   year?: number | null;
+  artistId?: string | null;
+  albumId?: string | null;
 }
 
 interface PlayerState {
@@ -401,6 +403,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           duration: t?.duration ?? null,
           ratingKey: t?.ratingKey ?? '',
           year: t?.year ?? t?.album?.year ?? null,
+          artistId: t?.artistId ?? null,
+          albumId: t?.albumId ?? null,
         }));
       return newTracks;
     } catch {

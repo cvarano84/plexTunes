@@ -184,9 +184,10 @@ interface NowPlayingViewProps {
   previousTrackCount?: number;
   columnLayout?: string;
   lyricsZoom?: number;
+  onNavigate?: (view: any, params?: any) => void;
 }
 
-export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3 }: NowPlayingViewProps) {
+export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3, onNavigate }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
     playQueue
@@ -327,15 +328,21 @@ export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 
             </div>
             <div className="flex items-center gap-2">
               <User className="w-[clamp(0.875rem,1.3vw,1.25rem)] h-[clamp(0.875rem,1.3vw,1.25rem)] text-muted-foreground flex-shrink-0" />
-              <p className="text-[clamp(1rem,2vw,1.75rem)] text-primary truncate">
+              <button
+                onClick={() => { if (currentTrack?.artistId && onNavigate) onNavigate('artist-detail', { artistId: currentTrack.artistId }); }}
+                className={`text-[clamp(1rem,2vw,1.75rem)] text-primary truncate text-left ${currentTrack?.artistId && onNavigate ? 'hover:underline cursor-pointer' : ''}`}
+              >
                 {currentTrack?.artistName ?? ''}
-              </p>
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <Disc3 className="w-[clamp(0.875rem,1.3vw,1.25rem)] h-[clamp(0.875rem,1.3vw,1.25rem)] text-muted-foreground flex-shrink-0" />
-              <p className="text-[clamp(0.875rem,1.5vw,1.375rem)] text-muted-foreground truncate">
+              <button
+                onClick={() => { if (currentTrack?.albumId && onNavigate) onNavigate('album-detail', { albumId: currentTrack.albumId }); }}
+                className={`text-[clamp(0.875rem,1.5vw,1.375rem)] text-muted-foreground truncate text-left ${currentTrack?.albumId && onNavigate ? 'hover:underline cursor-pointer' : ''}`}
+              >
                 {currentTrack?.albumTitle ?? ''}
-              </p>
+              </button>
             </div>
           </div>
 

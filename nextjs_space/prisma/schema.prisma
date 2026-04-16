@@ -150,3 +150,14 @@ model JukeboxSettings {
   sweetFades          Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }
+
+model Mix {
+  id              String   @id @default(cuid())
+  name            String
+  stationIds      String[] @default([])
+  artistIds       String[] @default([])
+  popularOnly     Boolean  @default(true)
+  imageUrl        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

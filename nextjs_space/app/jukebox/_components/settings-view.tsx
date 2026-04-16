@@ -1098,7 +1098,7 @@ export default function SettingsView({
             <label className="text-sm font-medium">EQ Bar Height</label>
             <p className="text-xs text-muted-foreground mb-2">Height of the LED equalizer in the player bar</p>
             <div className="flex items-center gap-3">
-              <input type="range" min="24" max="96" step="4" value={eqBarHeight} onChange={(e) => onEqBarHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <input type="range" min="24" max="200" step="4" value={eqBarHeight} onChange={(e) => onEqBarHeightChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-16 text-right">{eqBarHeight}px</span>
             </div>
           </div>

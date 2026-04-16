@@ -16,9 +16,10 @@ import AlbumDetailView from './album-detail-view';
 import QueueView from './queue-view';
 import SettingsView from './settings-view';
 import StatsView from './stats-view';
+import MixesView from './mixes-view';
 import TouchKeyboard from './touch-keyboard';
 
-export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats';
+export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats' | 'mixes';
 
 function JukeboxInner() {
   const router = useRouter();
@@ -271,9 +272,10 @@ function JukeboxInner() {
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} jukeboxTitle={jukeboxTitle} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
-      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'artists' || view === 'stats' ? 'overflow-hidden pb-36' : 'overflow-y-auto pb-36'}`}
+      <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'mixes' || view === 'artists' || view === 'stats' ? 'overflow-hidden pb-36' : 'overflow-y-auto pb-36'}`}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} />}
+        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
@@ -281,6 +283,7 @@ function JukeboxInner() {
             previousTrackCount={previousTrackCount}
             columnLayout={columnLayout}
             lyricsZoom={lyricsZoom}
+            onNavigate={navigate}
           />
         )}
         {view === 'artist-detail' && (

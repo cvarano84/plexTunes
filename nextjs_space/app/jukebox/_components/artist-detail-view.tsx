@@ -95,6 +95,8 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
     duration: t?.duration ?? null,
     ratingKey: t?.ratingKey ?? '',
     year: t?.year ?? null,
+    artistId: t?.artistId ?? artist?.id ?? null,
+    albumId: t?.albumId ?? null,
   });
 
   const handlePlayAll = () => {
@@ -251,8 +253,8 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
           )}
 
           {/* Similar artists */}
-          <div className="min-h-0 overflow-hidden" style={{ height: `${similarHeight}%` }}>
-            <div className="flex items-center gap-2 mb-2">
+          <div className="min-h-0 flex flex-col overflow-hidden" style={{ height: `${similarHeight}%` }}>
+            <div className="flex items-center gap-2 mb-2 flex-shrink-0">
               <Users className="w-4 h-4 text-primary" />
               <h3 className="text-sm font-display font-semibold">Similar Artists</h3>
             </div>
@@ -261,23 +263,24 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
                 <Loader2 className="w-3 h-3 animate-spin" /> Loading...
               </div>
             ) : similarArtists.length > 0 ? (
-              <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1">
+              <div className="flex-1 min-h-0 flex gap-3 overflow-x-auto scrollbar-none pb-1 items-start">
                 {similarArtists.map((sa: any) => (
                   <button
                     key={sa?.id ?? sa?.name}
                     onClick={() => { if (sa?.id) onNavigate?.('artist-detail', { artistId: sa.id }); }}
-                    className="flex-shrink-0 text-center group w-16"
+                    className="flex-shrink-0 text-center group"
+                    style={{ width: 'clamp(64px, 15%, 140px)' }}
                   >
-                    <div className="w-14 h-14 rounded-full overflow-hidden bg-secondary mx-auto mb-1 group-active:ring-2 group-active:ring-primary/50 transition-all">
+                    <div className="aspect-square rounded-full overflow-hidden bg-secondary mx-auto mb-1 group-active:ring-2 group-active:ring-primary/50 transition-all" style={{ maxHeight: 'calc(100% - 20px)' }}>
                       {sa?.thumb ? (
-                        <PlexImage thumb={sa.thumb} alt={sa?.name ?? ''} size={120} />
+                        <PlexImage thumb={sa.thumb} alt={sa?.name ?? ''} size={200} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <Users className="w-5 h-5" />
+                          <Users className="w-1/3 h-1/3" />
                         </div>
                       )}
                     </div>
-                    <p className="text-[10px] truncate">{sa?.name ?? ''}</p>
+                    <p className="text-[11px] truncate">{sa?.name ?? ''}</p>
                   </button>
                 ))}
               </div>

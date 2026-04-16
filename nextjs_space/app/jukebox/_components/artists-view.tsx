@@ -74,76 +74,62 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
   }, [artistRows]);
 
   const allArtistsRef = useRef<any[]>([]);
+  const initialLoadDone = useRef(false);
 
-  const fetchArtists = useCallback(async (pageNum: number, searchStr: string, _letterFilter: string, append: boolean) => {
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
+  const fetchArtists = useCallback(async (searchStr: string) => {
+    setLoading(true);
     try {
       const params = new URLSearchParams({
-        page: pageNum.toString(),
+        page: '1',
         limit: searchStr ? '100' : '5000',
       });
-      // Only use search filter - letter tap scrolls instead of filtering
       if (searchStr) {
         params.set('search', searchStr);
       }
       const res = await fetch(`/api/artists?${params}`);
       const data = await res?.json?.();
       const newArtists = data?.artists ?? [];
-      const totalPages = data?.totalPages ?? 1;
       setTotal(data?.total ?? 0);
-      setHasMore(searchStr ? pageNum < totalPages : false);
-      if (append) {
-        const merged = [...artists, ...newArtists];
-        setArtists(merged);
-        allArtistsRef.current = merged;
-      } else {
-        setArtists(newArtists);
+      setHasMore(false);
+      setArtists(newArtists);
+      if (!searchStr) {
         allArtistsRef.current = newArtists;
-        // Scroll back to start when changing search
-        if (scrollRef.current) scrollRef.current.scrollLeft = 0;
       }
+      if (scrollRef.current) scrollRef.current.scrollLeft = 0;
     } catch {
-      if (!append) setArtists([]);
+      setArtists([]);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [artists]);
+  }, []);
 
-  // Fetch when search changes (letter tap only scrolls, doesn't re-fetch)
+  // Initial load - all artists
   useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      fetchArtists('');
+    }
+  }, [fetchArtists]);
+
+  // Search changes trigger re-fetch
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setPage(1);
-      setHasMore(true);
-      fetchArtists(1, search, 'All', false);
-    }, search ? 300 : 0);
+    if (search) {
+      searchTimerRef.current = setTimeout(() => {
+        fetchArtists(search);
+      }, 300);
+    } else {
+      // Restore full list from ref
+      if (allArtistsRef.current.length > 0) {
+        setArtists(allArtistsRef.current);
+        setTotal(allArtistsRef.current.length);
+      }
+    }
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
   }, [search, fetchArtists]);
-
-  // Infinite scroll via IntersectionObserver
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !loading && !loadingMore) {
-          const nextPage = page + 1;
-          setPage(nextPage);
-          fetchArtists(nextPage, search, activeLetter, true);
-        }
-      },
-      { root: scrollRef.current, rootMargin: '400px', threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore, page, search, activeLetter, fetchArtists]);
 
   const handleLetterTap = (letter: string) => {
     setActiveLetter(letter);
@@ -268,12 +254,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
                 ))}
               </div>
             ))}
-            <div ref={sentinelRef} className="flex-shrink-0 w-4 h-full" />
-            {loadingMore && (
-              <div className="flex-shrink-0 flex items-center justify-center w-[100px]">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            )}
+            <div className="flex-shrink-0 w-4 h-full" />
           </div>
         </div>
       )}

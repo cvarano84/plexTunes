@@ -52,6 +52,8 @@ export default function StatsView() {
     duration: t?.duration ?? null,
     ratingKey: t?.ratingKey ?? '',
     year: t?.year ?? null,
+    artistId: t?.artistId ?? null,
+    albumId: t?.albumId ?? null,
   });
 
   const handlePlayAll = () => {

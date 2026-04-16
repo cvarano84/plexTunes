@@ -70,8 +70,8 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 z-50"
     >
-      {/* LED Equalizer */}
-      <div className="px-4 py-0.5">
+      {/* LED Equalizer - solid background, part of the bar */}
+      <div className="bg-card px-4 py-1">
         <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} height={eqBarHeight} />
       </div>
 
