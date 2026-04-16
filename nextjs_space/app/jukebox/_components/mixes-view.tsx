@@ -191,16 +191,17 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor - scale to fill available space
+  // Artist grid sizing for editor - calculate once from parent height, no ResizeObserver
+  // (ResizeObserver causes infinite loop: set size → icons grow → observer fires → repeat)
   useEffect(() => {
     if (editing === null) return;
     const calcSize = () => {
-      // Measure the outer artist section wrapper (flex-1) to get full available height
       const section = artistScrollRef.current;
       if (!section) return;
       const available = section.clientHeight;
-      // Subtract header row (~28px) + search input (~32px) + selected chips (~max 32px) + gaps
-      const overhead = 70;
+      if (available < 50) return; // DOM not ready yet
+      // Subtract label row (~28px) + search input (~32px) + arrow buttons padding (~16px)
+      const overhead = 76;
       const gapSize = 8;
       const labelHeight = 18;
       const rows = 4;
@@ -209,11 +210,10 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
       const perRow = Math.max(60, Math.floor((usable - totalGaps - labelHeight * rows) / rows));
       setArtistItemSize(perRow);
     };
-    // Delay to let DOM settle
-    const t = setTimeout(calcSize, 100);
-    const ro = new ResizeObserver(calcSize);
-    if (artistScrollRef.current) ro.observe(artistScrollRef.current);
-    return () => { clearTimeout(t); ro.disconnect(); };
+    // Single delayed calculation — no observer to avoid feedback loop
+    const t1 = setTimeout(calcSize, 100);
+    const t2 = setTimeout(calcSize, 300); // retry in case DOM wasn't ready
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [editing]);
 
   const handlePlay = async (mix: any) => {

@@ -413,7 +413,7 @@ export default function MobilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="h-screen bg-zinc-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex-shrink-0">
         <h1 className="text-lg font-bold tracking-tight">{jukeboxTitle}</h1>
