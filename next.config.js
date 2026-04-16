@@ -1,15 +1,12 @@
 const path = require('path');
 
-const isDocker = !!process.env.DOCKER_BUILD;
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  output: process.env.NEXT_OUTPUT_MODE || undefined,
+  output: process.env.NEXT_OUTPUT_MODE,
+  productionBrowserSourceMaps: false,
   experimental: {
-    // In Docker, source is at /app root — no need to go up a level
-    // In Abacus dev env, source is in nextjs_space/ subfolder
-    outputFileTracingRoot: isDocker ? __dirname : path.join(__dirname, '../'),
+    outputFileTracingRoot: path.join(__dirname, '../'),
   },
   eslint: {
     ignoreDuringBuilds: true,

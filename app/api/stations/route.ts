@@ -45,7 +45,7 @@ export async function GET() {
           filtered = allTracksWithArt.filter(t => (t.playCount ?? 0) > 0);
         } else if (stationType === 'hits') {
           filtered = allTracksWithArt.filter(t => {
-            if (station.minPopularity > 0 && (t.popularity ?? 0) < station.minPopularity) return false;
+            if (station.minPopularity > 0 && t.popularity != null && t.popularity < station.minPopularity) return false;
             if (station.decade && getDecadeFromYear(t.year) !== station.decade) return false;
             if (station.genre && !mapGenreToStation(t.genre, t.album?.genre).includes(station.genre)) return false;
             return true;

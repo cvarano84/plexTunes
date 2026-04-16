@@ -52,9 +52,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (station.stationType === 'hits') {
       const minPop = station.minPopularity || 40;
 
-      // Build where clause
+      // Build where clause — include tracks with popularity >= minPop OR null popularity (unscored)
       const where: any = {
-        popularity: { gte: minPop },
+        OR: [
+          { popularity: { gte: minPop } },
+          { popularity: null },
+        ],
       };
 
       // If genre is set, we need to filter by genre mapping (can't do in SQL)
@@ -85,16 +88,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         });
       }
 
-      // Sort by popularity with shuffle among similar
-      const sorted = filtered.sort((a: any, b: any) => {
+      // Sort: tracks with popularity first (descending), then unscored shuffled
+      const withPop = filtered.filter((t: any) => t?.popularity != null && t.popularity >= minPop);
+      const noPop = filtered.filter((t: any) => t?.popularity == null);
+      withPop.sort((a: any, b: any) => {
         const popA = a?.popularity ?? 0;
         const popB = b?.popularity ?? 0;
         if (Math.abs(popA - popB) <= 5) return Math.random() - 0.5;
         return popB - popA;
       });
-
-      const top = sorted.slice(0, 50);
-      const selected = shuffle(top).slice(0, limit);
+      const combined = [...withPop.slice(0, 50), ...shuffle(noPop).slice(0, Math.max(0, 50 - withPop.length))];
+      const selected = shuffle(combined).slice(0, limit);
 
       return NextResponse.json({ station, tracks: selected });
     }

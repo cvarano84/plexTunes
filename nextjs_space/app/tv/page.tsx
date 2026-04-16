@@ -9,11 +9,12 @@ interface NowPlayingData {
   currentTrack: {
     id: string; title: string; artistName: string; albumTitle: string;
     thumb: string | null; duration: number | null; year?: number | null;
+    mediaKey?: string | null;
   } | null;
   isPlaying: boolean;
   currentTime: number;
   publishedAt: number;
-  queue: { id: string; title: string; artistName: string; thumb: string | null; duration: number | null }[];
+  queue: { id: string; title: string; artistName: string; thumb: string | null; duration: number | null; mediaKey?: string | null }[];
   queueIndex: number;
   currentStationName: string | null;
   jukeboxTitle: string;
@@ -49,6 +50,180 @@ function PlexImg({ thumb, alt, className }: { thumb: string | null; alt: string;
   return <img src={src} alt={alt} className={className} onError={() => setErr(true)} draggable={false} />;
 }
 
+/* ─── Animated Background (standalone, no player-context) ─── */
+type BgStyle = 'aurora' | 'nebula' | 'gradient-flow';
+const BG_STYLES: BgStyle[] = ['aurora', 'nebula', 'gradient-flow'];
+
+function TVBackground({ energy }: { energy: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<number>(0);
+  const styleRef = useRef<BgStyle>(BG_STYLES[0]);
+  const styleTimerRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let w = 0, h = 0;
+    const resize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    let running = true;
+    const loop = () => {
+      if (!running) return;
+      const t = performance.now();
+      const e = energy;
+
+      // Rotate style every 60 seconds
+      const styleIdx = Math.floor(t / 60000) % BG_STYLES.length;
+      styleRef.current = BG_STYLES[styleIdx];
+      const style = styleRef.current;
+
+      if (style === 'aurora') {
+        ctx.fillStyle = 'rgba(0,0,0,0.05)';
+        ctx.fillRect(0, 0, w, h);
+        for (let l = 0; l < 4; l++) {
+          const baseY = h * (0.2 + l * 0.15);
+          const amp = 30 + e * 40;
+          const speed = 0.0003 + l * 0.0001;
+          const hue = (200 + l * 30 + t * 0.01) % 360;
+          ctx.beginPath(); ctx.moveTo(0, h);
+          for (let x = 0; x <= w; x += 4) {
+            const y = baseY + Math.sin(x * 0.003 + t * speed) * amp + Math.sin(x * 0.007 + t * speed * 1.3) * amp * 0.5;
+            ctx.lineTo(x, y);
+          }
+          ctx.lineTo(w, h); ctx.closePath();
+          const grad = ctx.createLinearGradient(0, baseY - amp, 0, baseY + amp * 2);
+          grad.addColorStop(0, `hsla(${hue}, 70%, 50%, ${0.03 + e * 0.06})`);
+          grad.addColorStop(0.5, `hsla(${hue + 20}, 60%, 40%, ${0.02 + e * 0.04})`);
+          grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad; ctx.fill();
+        }
+      } else if (style === 'nebula') {
+        ctx.fillStyle = 'rgba(0,0,0,0.02)';
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 3; i++) {
+          const cx = w * (0.3 + 0.2 * Math.sin(t * 0.0002 + i * 2));
+          const cy = h * (0.3 + 0.2 * Math.cos(t * 0.00015 + i * 1.5));
+          const r = 150 + e * 100;
+          const hue = (220 + i * 40 + t * 0.005) % 360;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+          grad.addColorStop(0, `hsla(${hue}, 60%, 50%, ${0.04 + e * 0.06})`);
+          grad.addColorStop(0.5, `hsla(${hue + 30}, 50%, 40%, ${0.02 + e * 0.03})`);
+          grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+        }
+      } else {
+        const hue1 = (t * 0.01) % 360;
+        const hue2 = (hue1 + 60 + e * 30) % 360;
+        const hue3 = (hue1 + 180) % 360;
+        const x1 = w * (0.5 + 0.3 * Math.sin(t * 0.0002));
+        const y1 = h * (0.5 + 0.3 * Math.cos(t * 0.00015));
+        const grad = ctx.createRadialGradient(x1, y1, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+        grad.addColorStop(0, `hsla(${hue1}, 50%, 15%, ${0.8 + e * 0.2})`);
+        grad.addColorStop(0.5, `hsla(${hue2}, 40%, 10%, 0.9)`);
+        grad.addColorStop(1, `hsla(${hue3}, 30%, 5%, 1)`);
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+      }
+
+      frameRef.current = requestAnimationFrame(loop);
+    };
+    frameRef.current = requestAnimationFrame(loop);
+    return () => { running = false; cancelAnimationFrame(frameRef.current); window.removeEventListener('resize', resize); };
+  }, [energy]);
+
+  return (
+    <>
+      <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.35 }} />
+      <div className="fixed inset-0 z-0 pointer-events-none bg-black/50" />
+    </>
+  );
+}
+
+/* ─── LED Equalizer (standalone, uses provided analyser) ─── */
+function TVEqualizer({ analyserNode, isPlaying, bandCount = 48 }: {
+  analyserNode: AnalyserNode | null; isPlaying: boolean; bandCount?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const fallbackBarsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const cw = Math.round(rect.width * dpr);
+      const ch = Math.round(rect.height * dpr);
+      if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    };
+    resizeCanvas();
+    const ro = new ResizeObserver(resizeCanvas);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (fallbackBarsRef.current.length !== bandCount) fallbackBarsRef.current = Array(bandCount).fill(0);
+
+    const draw = () => {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = false;
+      const dpr = window.devicePixelRatio || 1;
+      const gap = Math.round(2 * dpr);
+      const barW = Math.max(Math.round(2 * dpr), Math.floor((w - gap * (bandCount - 1)) / bandCount));
+      const ledH = Math.round(4 * dpr);
+      const ledGap = Math.round(2 * dpr);
+      const maxLeds = Math.floor(h / (ledH + ledGap));
+
+      let dataArray: Uint8Array | null = null;
+      if (analyserNode) { dataArray = new Uint8Array(analyserNode.frequencyBinCount); analyserNode.getByteFrequencyData(dataArray); }
+
+      for (let i = 0; i < bandCount; i++) {
+        let value: number;
+        if (dataArray && analyserNode) {
+          const idx = Math.floor((i / bandCount) * dataArray.length);
+          value = (dataArray[idx] ?? 0) / 255;
+        } else if (isPlaying) {
+          const target = 0.2 + Math.random() * 0.6;
+          fallbackBarsRef.current[i] = (fallbackBarsRef.current[i] ?? 0) * 0.7 + target * 0.3;
+          value = fallbackBarsRef.current[i];
+        } else {
+          fallbackBarsRef.current[i] = (fallbackBarsRef.current[i] ?? 0) * 0.9;
+          value = fallbackBarsRef.current[i];
+        }
+        const activeLeds = Math.max(0, Math.round(value * maxLeds));
+        const x = Math.round(i * (barW + gap));
+        for (let led = 0; led < maxLeds; led++) {
+          const y = Math.round(h - (led + 1) * (ledH + ledGap));
+          const nH = led / maxLeds;
+          ctx.fillStyle = led < activeLeds
+            ? (nH > 0.85 ? '#ef4444' : nH > 0.65 ? '#eab308' : '#22c55e')
+            : 'rgba(255,255,255,0.04)';
+          ctx.fillRect(x, y, barW, ledH);
+        }
+      }
+      animRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [analyserNode, isPlaying, bandCount]);
+
+  return (
+    <canvas ref={canvasRef} className="w-full rounded-lg" style={{ imageRendering: 'pixelated', height: 'clamp(3rem,6vh,5rem)' }} />
+  );
+}
+
 /* ─── TV Display Page ──────────────────────────────── */
 export default function TVPage() {
   const [np, setNp] = useState<NowPlayingData | null>(null);
@@ -58,6 +233,66 @@ export default function TVPage() {
   const [localTime, setLocalTime] = useState(0);
   const lastTrackRef = useRef<string>('');
   const lyricsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Audio streaming
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [audioEnergy, setAudioEnergy] = useState(0.3);
+  const lastMediaKeyRef = useRef<string>('');
+
+  // Initialize audio element once
+  useEffect(() => {
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'auto';
+    audio.volume = 0.8;
+    audioRef.current = audio;
+
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audioContextRef.current?.close().catch(() => {});
+    };
+  }, []);
+
+  // Setup Web Audio analyser on first user interaction or auto-play
+  const ensureAudioContext = useCallback(() => {
+    if (audioContextRef.current) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+      sourceRef.current = source;
+      setAnalyserNode(analyser);
+    } catch (e) {
+      console.warn('[TV] AudioContext init failed:', e);
+    }
+  }, []);
+
+  // Energy monitor for background effects
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const analyser = analyserRef.current;
+      if (!analyser) { setAudioEnergy(np?.isPlaying ? 0.4 : 0.2); return; }
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i];
+      setAudioEnergy(Math.min(1, (sum / buf.length / 255) * 2.5));
+    }, 100);
+    return () => clearInterval(iv);
+  }, [np?.isPlaying]);
 
   // Poll remote state every 2 seconds
   useEffect(() => {
@@ -69,7 +304,6 @@ export default function TVPage() {
         if (!active) return;
         if (data?.state) {
           setNp(data.state);
-          // Estimate current time accounting for poll delay
           const elapsed = (Date.now() - (data.state.publishedAt ?? Date.now())) / 1000;
           setLocalTime(Math.max(0, (data.state.currentTime ?? 0) + (data.state.isPlaying ? elapsed : 0)));
         }
@@ -79,6 +313,45 @@ export default function TVPage() {
     const iv = setInterval(poll, 2000);
     return () => { active = false; clearInterval(iv); };
   }, []);
+
+  // Update audio when track changes
+  useEffect(() => {
+    const track = np?.currentTrack;
+    const mediaKey = track?.mediaKey;
+    const audio = audioRef.current;
+    if (!audio || !mediaKey) return;
+
+    if (mediaKey !== lastMediaKeyRef.current) {
+      lastMediaKeyRef.current = mediaKey;
+      ensureAudioContext();
+      audio.src = `/api/plex/stream?key=${encodeURIComponent(mediaKey)}`;
+      audio.currentTime = 0;
+      if (np?.isPlaying) {
+        audio.play().catch(() => {
+          // Auto-play blocked — will play on interaction
+        });
+      }
+    }
+  }, [np?.currentTrack?.mediaKey, np?.isPlaying, ensureAudioContext]);
+
+  // Sync play/pause state
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audio.src) return;
+    if (np?.isPlaying && audio.paused) {
+      ensureAudioContext();
+      audio.play().catch(() => {});
+    } else if (!np?.isPlaying && !audio.paused) {
+      audio.pause();
+    }
+  }, [np?.isPlaying, ensureAudioContext]);
+
+  // Resume audio context if suspended
+  useEffect(() => {
+    if (np?.isPlaying && audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => {});
+    }
+  }, [np?.isPlaying]);
 
   // Tick local time forward
   useEffect(() => {
@@ -118,19 +391,36 @@ export default function TVPage() {
     return idx;
   }, [timedLines, localTime]);
 
-  // Auto-scroll lyrics to current line
-  const scrollToLine = useCallback((idx: number) => {
+  // Smooth scroll lyrics using translateY instead of scrollTo - no resizing
+  useEffect(() => {
     const container = lyricsContainerRef.current;
-    if (!container || idx < 0) return;
-    const el = container.querySelector(`[data-line="${idx}"]`) as HTMLElement;
-    if (el) {
-      const containerH = container.clientHeight;
-      const targetTop = el.offsetTop - containerH / 3;
-      container.scrollTo({ top: targetTop, behavior: 'smooth' });
-    }
-  }, []);
+    if (!container || currentLineIdx < 0) return;
+    const el = container.querySelector(`[data-line="${currentLineIdx}"]`) as HTMLElement;
+    if (!el) return;
+    const containerH = container.clientHeight;
+    const targetTop = el.offsetTop - containerH / 3;
+    container.scrollTo({ top: targetTop, behavior: 'smooth' });
+  }, [currentLineIdx]);
 
-  useEffect(() => { scrollToLine(currentLineIdx); }, [currentLineIdx, scrollToLine]);
+  // Click anywhere to init audio (auto-play policy workaround)
+  useEffect(() => {
+    const handler = () => {
+      ensureAudioContext();
+      const audio = audioRef.current;
+      if (audio && audio.src && audio.paused && np?.isPlaying) {
+        audio.play().catch(() => {});
+      }
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    document.addEventListener('click', handler, { once: false });
+    document.addEventListener('keydown', handler, { once: false });
+    return () => {
+      document.removeEventListener('click', handler);
+      document.removeEventListener('keydown', handler);
+    };
+  }, [ensureAudioContext, np?.isPlaying]);
 
   const track = np?.currentTrack;
   const duration = track?.duration ? track.duration / 1000 : 0;
@@ -141,17 +431,23 @@ export default function TVPage() {
   if (!track) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center text-white">
-        <Music2 className="w-24 h-24 text-zinc-700 mb-6" />
-        <h1 className="text-4xl font-bold text-zinc-500">HomeBarr Tunes</h1>
-        <p className="text-xl text-zinc-600 mt-2">Waiting for playback...</p>
+        <TVBackground energy={0.2} />
+        <div className="relative z-10 flex flex-col items-center">
+          <Music2 className="w-24 h-24 text-zinc-700 mb-6" />
+          <h1 className="text-4xl font-bold text-zinc-500">HomeBarr Tunes</h1>
+          <p className="text-xl text-zinc-600 mt-2">Waiting for playback...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden select-none">
+      {/* Animated background */}
+      <TVBackground energy={audioEnergy} />
+
       {/* Main content: 3 columns — Art | Lyrics | Queue */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative z-10">
         {/* LEFT: Album art + track info */}
         <div className="flex flex-col items-center justify-center px-8" style={{ flex: '0 0 32%' }}>
           {/* Year */}
@@ -178,7 +474,7 @@ export default function TVPage() {
           )}
         </div>
 
-        {/* CENTER: Lyrics */}
+        {/* CENTER: Lyrics — uniform size, smooth scroll, no resizing */}
         <div className="flex-1 flex flex-col min-h-0 py-6">
           <div className="text-sm text-zinc-500 font-medium mb-2 px-4">🎤 Lyrics</div>
           <div
@@ -195,14 +491,13 @@ export default function TVPage() {
                     <p
                       key={i}
                       data-line={i}
-                      className={`text-center transition-all duration-500 leading-relaxed ${
+                      className={`text-center text-2xl leading-relaxed transition-colors duration-500 ${
                         isCurrent
-                          ? 'text-white text-4xl font-bold scale-105'
+                          ? 'text-white font-bold'
                           : isPast
-                            ? 'text-zinc-600 text-2xl'
-                            : 'text-zinc-500 text-2xl'
+                            ? 'text-zinc-600'
+                            : 'text-zinc-500'
                       }`}
-                      style={{ transform: isCurrent ? 'scale(1.03)' : 'scale(1)' }}
                     >
                       {line.text || '\u266A'}
                     </p>
@@ -251,8 +546,11 @@ export default function TVPage() {
         </div>
       </div>
 
-      {/* Bottom: Progress bar */}
-      <div className="flex-shrink-0 px-6 pb-4">
+      {/* Bottom: EQ + Progress bar */}
+      <div className="flex-shrink-0 px-6 pb-4 relative z-10 space-y-2">
+        {/* LED Equalizer */}
+        <TVEqualizer analyserNode={analyserNode} isPlaying={np?.isPlaying ?? false} />
+        {/* Progress */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-500 tabular-nums w-12 text-right">{formatTime(localTime)}</span>
           <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">

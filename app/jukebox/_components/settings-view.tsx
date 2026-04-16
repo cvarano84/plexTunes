@@ -437,6 +437,8 @@ export default function SettingsView({
   const [resyncing, setResyncing] = useState(false);
   const [popularityRunning, setPopularityRunning] = useState(false);
   const [popularityProgress, setPopularityProgress] = useState('');
+  const [bpmRunning, setBpmRunning] = useState(false);
+  const [bpmProgress, setBpmProgress] = useState('');
 
   // Provider management state - initialized with defaults, loaded from localStorage in effect
   const [popOrder, setPopOrder] = useState<string[]>(['deezer', 'lastfm', 'spotify']);
@@ -691,6 +693,34 @@ export default function SettingsView({
     setPopularityRunning(false);
   };
 
+  const handleRunBpm = async () => {
+    setBpmRunning(true);
+    setBpmProgress('Starting BPM scrape...');
+    try {
+      let done = false;
+      let totalProcessed = 0;
+      while (!done) {
+        const res = await fetch('/api/tracks/bpm/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchSize: 25 }),
+        });
+        const data = await res.json();
+        if (data?.error) { setBpmProgress(`Error: ${data.error}`); break; }
+        totalProcessed += data?.processed ?? 0;
+        done = data?.done ?? false;
+        const remaining = data?.remaining ?? 0;
+        setBpmProgress(`Processed ${totalProcessed} tracks (${data?.totalWithBpm ?? 0} with BPM), ${remaining} remaining...`);
+        if (!done) await new Promise(r => setTimeout(r, 300));
+      }
+      setBpmProgress(`Done! ${totalProcessed} tracks checked.`);
+      setTimeout(fetchDiagnostics, 1000);
+    } catch (e: any) {
+      setBpmProgress(`Error: ${e?.message ?? 'Failed'}`);
+    }
+    setBpmRunning(false);
+  };
+
   // Render a provider card for the provider management section
   function ProviderCard({ provider, type, order, disabled, onMove, onToggle }: {
     provider: PopProvider | LyricsProvider;
@@ -900,6 +930,30 @@ export default function SettingsView({
               )}
             </div>
           </motion.div>
+        )}
+      </motion.div>
+
+      {/* BPM Data */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }} className="mb-8">
+        <h3 className="text-lg font-display font-semibold mb-3 flex items-center gap-2">
+          <Gauge className="w-5 h-5 text-accent" />
+          BPM Data (Party Beats)
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Pre-populate BPM data from Deezer so Party Beats mode can sort tracks by tempo instantly. Without this, BPM is looked up one track at a time during playback.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={handleRunBpm}
+            disabled={bpmRunning}
+            className="px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1"
+          >
+            {bpmRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />}
+            Run BPM Scrape
+          </button>
+        </div>
+        {bpmProgress && (
+          <p className="text-xs text-muted-foreground mt-2">{bpmProgress}</p>
         )}
       </motion.div>
 

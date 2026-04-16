@@ -176,7 +176,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor (4 rows, smaller)
+  // Artist grid sizing for editor - scale to fill available space
   useEffect(() => {
     if (editing === null) return;
     const calcSize = () => {
@@ -184,11 +184,12 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
       if (!container) return;
       const available = container.clientHeight;
       const gapSize = 8;
-      const labelHeight = 24;
+      const labelHeight = 20;
       const rows = 4;
       const totalGaps = (rows - 1) * gapSize;
-      const perRow = Math.max(50, Math.floor((available - totalGaps) / rows) - labelHeight);
-      setArtistItemSize(Math.min(120, perRow));
+      // Use all available height minus gaps and labels
+      const perRow = Math.max(60, Math.floor((available - totalGaps - labelHeight * rows) / rows));
+      setArtistItemSize(perRow);
     };
     // Delay to let DOM settle
     const t = setTimeout(calcSize, 50);
@@ -373,38 +374,52 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
                 })}
               </div>
             )}
-            {/* Artist grid (4 rows, scrollable) */}
+            {/* Artist grid (4 rows, scrollable with arrows) */}
             {artistsLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
             ) : (
-              <div ref={artistContainerRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0">
-                <div className="flex gap-2 h-full items-center">
-                  {artistColumns.map((col, ci) => (
-                    <div key={ci} className="flex flex-col gap-2 flex-shrink-0" style={{ width: artistItemSize }}>
-                      {col.map((artist: any) => {
-                        const selected = formArtistIds.includes(artist.id);
-                        return (
-                          <button key={artist.id} onClick={() => toggleArtist(artist.id)}
-                            className={`group text-center flex-shrink-0 relative ${selected ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>
-                            <div className="relative rounded-full overflow-hidden bg-secondary mx-auto transition-all"
-                              style={{ width: artistItemSize, height: artistItemSize }}>
-                              <PlexImage thumb={artist?.thumb} alt={artist?.name ?? ''} />
-                              {selected && (
-                                <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
-                                  <Check className="w-1/3 h-1/3 text-white" />
-                                </div>
-                              )}
-                            </div>
-                            <h4 className="font-medium text-[10px] truncate px-0.5 mt-0.5">{artist?.name ?? 'Unknown'}</h4>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                  <div className="flex-shrink-0 w-4 h-full" />
+              <div className="flex-1 flex items-center gap-1 min-h-0">
+                <button
+                  onClick={() => { const el = artistContainerRef.current; if (el) el.scrollBy({ left: -(artistItemSize + 8) * 3, behavior: 'smooth' }); }}
+                  className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/60 hover:bg-secondary flex items-center justify-center transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div ref={artistContainerRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0">
+                  <div className="flex gap-2 h-full items-center">
+                    {artistColumns.map((col, ci) => (
+                      <div key={ci} className="flex flex-col gap-2 flex-shrink-0" style={{ width: artistItemSize }}>
+                        {col.map((artist: any) => {
+                          const selected = formArtistIds.includes(artist.id);
+                          return (
+                            <button key={artist.id} onClick={() => toggleArtist(artist.id)}
+                              className={`group text-center flex-shrink-0 relative ${selected ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>
+                              <div className="relative rounded-full overflow-hidden bg-secondary mx-auto transition-all"
+                                style={{ width: artistItemSize, height: artistItemSize }}>
+                                <PlexImage thumb={artist?.thumb} alt={artist?.name ?? ''} />
+                                {selected && (
+                                  <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
+                                    <Check className="w-1/3 h-1/3 text-white" />
+                                  </div>
+                                )}
+                              </div>
+                              <h4 className="font-medium text-[10px] truncate px-0.5 mt-0.5">{artist?.name ?? 'Unknown'}</h4>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <div className="flex-shrink-0 w-4 h-full" />
+                  </div>
                 </div>
+                <button
+                  onClick={() => { const el = artistContainerRef.current; if (el) el.scrollBy({ left: (artistItemSize + 8) * 3, behavior: 'smooth' }); }}
+                  className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/60 hover:bg-secondary flex items-center justify-center transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>
