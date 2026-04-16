@@ -100,6 +100,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const [artistSearch, setArtistSearch] = useState('');
   const { playQueue, setCurrentStationId, setCurrentStationName, setCurrentMixId } = usePlayer();
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const artistScrollRef = useRef<HTMLDivElement>(null);
   const artistContainerRef = useRef<HTMLDivElement>(null);
   const [cardSize, setCardSize] = useState(200);
@@ -411,8 +412,6 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
       </div>
     );
   }
-
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (dir: 'left' | 'right') => {
     const el = scrollRef.current;

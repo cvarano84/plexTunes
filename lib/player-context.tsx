@@ -128,7 +128,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [partyBeat, setPartyBeatState] = useState(false);
   const [partyBeatRate, setPartyBeatRateState] = useState(1.08);
   const [detectedBpm, setDetectedBpm] = useState<number | null>(null);
-  const bpmDetectorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -317,89 +316,49 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [partyBeat]);
 
-  // BPM detection from analyser data — runs when party beat is on + music is playing
+  // BPM lookup from API (Deezer) — fetches once per track when party beat is on
   useEffect(() => {
-    if (!partyBeat || !isPlaying || !analyserNode) {
-      if (bpmDetectorRef.current) { clearInterval(bpmDetectorRef.current); bpmDetectorRef.current = null; }
+    if (!partyBeat || !currentTrack?.id) {
+      setDetectedBpm(null);
       return;
     }
-    // Onset detection: track energy peaks in low-freq bins
-    const bufLen = analyserNode.frequencyBinCount;
-    const dataArr = new Uint8Array(bufLen);
-    let prevEnergy = 0;
-    const onsetTimes: number[] = [];
+    let cancelled = false;
     const TARGET_MIN = 120;
     const TARGET_MAX = 130;
 
-    bpmDetectorRef.current = setInterval(() => {
-      analyserNode.getByteFrequencyData(dataArr);
-      // Low-freq energy (first ~20% of bins = roughly 0-2kHz kick/bass range)
-      const lowBins = Math.max(4, Math.floor(bufLen * 0.2));
-      let energy = 0;
-      for (let i = 0; i < lowBins; i++) energy += dataArr[i];
-      energy /= lowBins;
-
-      // Detect onset: significant rise in energy
-      const threshold = 15;
-      if (energy - prevEnergy > threshold && energy > 80) {
-        const now = performance.now();
-        onsetTimes.push(now);
-        // Keep only last 20 seconds of onsets
-        while (onsetTimes.length > 0 && now - onsetTimes[0] > 20000) onsetTimes.shift();
-      }
-      prevEnergy = energy * 0.7 + prevEnergy * 0.3; // smooth
-
-      // Need at least 8 onsets to estimate BPM
-      if (onsetTimes.length >= 8) {
-        // Calculate intervals
-        const intervals: number[] = [];
-        for (let i = 1; i < onsetTimes.length; i++) {
-          intervals.push(onsetTimes[i] - onsetTimes[i - 1]);
+    (async () => {
+      try {
+        const res = await fetch(`/api/tracks/bpm?trackId=${encodeURIComponent(currentTrack.id)}`);
+        if (cancelled) return;
+        const data = await res?.json?.();
+        const bpm = data?.bpm;
+        if (typeof bpm !== 'number' || bpm <= 0) {
+          setDetectedBpm(null);
+          return;
         }
-        // Filter out outliers (keep 50-500ms = 120-1200 BPM single-beat range)
-        const valid = intervals.filter(d => d > 50 && d < 500);
-        if (valid.length >= 4) {
-          // Median interval
-          valid.sort((a, b) => a - b);
-          const median = valid[Math.floor(valid.length / 2)];
-          const rawBpm = 60000 / median;
-          // Normalize to reasonable range: if half-time or double-time, adjust
-          let bpm = rawBpm;
-          while (bpm < 70) bpm *= 2;
-          while (bpm > 200) bpm /= 2;
-          
-          setDetectedBpm(Math.round(bpm));
-          
-          // Auto-calculate rate to bring song into target range
-          const targetBpm = Math.min(TARGET_MAX, Math.max(TARGET_MIN, bpm)); // clamp to range
-          const desiredBpm = bpm < TARGET_MIN ? TARGET_MIN : bpm > TARGET_MAX ? TARGET_MAX : bpm;
-          const rate = desiredBpm / bpm;
-          const clampedRate = Math.max(0.8, Math.min(1.3, rate));
-          // Only update if significantly different from current
-          setPartyBeatRateState(prev => {
-            if (Math.abs(prev - clampedRate) > 0.005) {
-              const audio = audioRef.current;
-              if (audio) { audio.preservesPitch = true; audio.playbackRate = clampedRate; }
-              const xAudio = crossfadeAudioRef.current;
-              if (xAudio && xAudio.src) { xAudio.preservesPitch = true; xAudio.playbackRate = clampedRate; }
-              try { localStorage.setItem('jukebox_party_beat_rate', String(clampedRate)); } catch { /* */ }
-              return clampedRate;
-            }
-            return prev;
-          });
-        }
-      }
-    }, 50); // 20Hz analysis rate
+        setDetectedBpm(Math.round(bpm));
 
-    return () => {
-      if (bpmDetectorRef.current) { clearInterval(bpmDetectorRef.current); bpmDetectorRef.current = null; }
-    };
-  }, [partyBeat, isPlaying, analyserNode, deckSwap]);
+        // Auto-calculate rate to bring song into target range
+        const desiredBpm = bpm < TARGET_MIN ? TARGET_MIN : bpm > TARGET_MAX ? TARGET_MAX : bpm;
+        const rate = desiredBpm / bpm;
+        const clampedRate = Math.max(0.8, Math.min(1.3, rate));
+        if (cancelled) return;
+        setPartyBeatRateState(prev => {
+          if (Math.abs(prev - clampedRate) > 0.005) {
+            const audio = audioRef.current;
+            if (audio) { audio.preservesPitch = true; audio.playbackRate = clampedRate; }
+            const xAudio = crossfadeAudioRef.current;
+            if (xAudio && xAudio.src) { xAudio.preservesPitch = true; xAudio.playbackRate = clampedRate; }
+            try { localStorage.setItem('jukebox_party_beat_rate', String(clampedRate)); } catch { /* */ }
+            return clampedRate;
+          }
+          return prev;
+        });
+      } catch { /* ignore */ }
+    })();
 
-  // Reset BPM detection when track changes
-  useEffect(() => {
-    setDetectedBpm(null);
-  }, [currentTrack?.id]);
+    return () => { cancelled = true; };
+  }, [partyBeat, currentTrack?.id]);
 
   // Apply party beat rate when new track loads
   useEffect(() => {

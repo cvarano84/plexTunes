@@ -190,10 +190,14 @@ export default function AnimatedBackground({ style, musicReactive = true }: Anim
   if (style === 'none') return null;
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 z-0 pointer-events-none"
-      style={{ opacity: 0.7 }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{ opacity: 0.35 }}
+      />
+      {/* Dark scrim so text stays readable */}
+      <div className="fixed inset-0 z-0 pointer-events-none bg-black/50" />
+    </>
   );
 }

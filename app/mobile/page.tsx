@@ -577,9 +577,9 @@ export default function MobilePage() {
         {tab === 'artists' && (
           <div className="flex flex-col h-full">
             {artistBrowse === 'list' && (
-              <>
+              <div className="flex flex-col h-full">
                 {/* A-Z quick jump - pinned to top */}
-                <div className="flex flex-wrap gap-1 p-4 pb-2 sticky top-0 z-20 bg-black/95 backdrop-blur-sm">
+                <div className="flex flex-wrap gap-1 p-4 pb-2 flex-shrink-0 bg-black/95">
                   <button
                     onClick={() => {
                       setArtistLetter(null);
@@ -612,11 +612,11 @@ export default function MobilePage() {
                   ))}
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 pb-4">
+                <div ref={artistListRef} className="flex-1 overflow-y-auto px-4 pb-4">
                   {artistsLoading ? (
                     <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
                   ) : artists.length > 0 ? (
-                    <div ref={artistListRef} className="space-y-1">
+                    <div className="space-y-1">
                       {artists.map((a: any, ai: number) => (
                         <button
                           key={a.id}
@@ -640,7 +640,7 @@ export default function MobilePage() {
                     <p className="text-center text-zinc-500 text-sm py-8">No artists found</p>
                   )}
                 </div>
-              </>
+              </div>
             )}
 
             {/* Artist Detail - Albums */}

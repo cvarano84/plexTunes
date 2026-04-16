@@ -46,6 +46,16 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
   } = usePlayer();
 
   const [partyPopover, setPartyPopover] = useState(false);
+  const partyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Auto-close party beat popover after 15 seconds
+  useEffect(() => {
+    if (partyPopover) {
+      if (partyTimerRef.current) clearTimeout(partyTimerRef.current);
+      partyTimerRef.current = setTimeout(() => setPartyPopover(false), 15000);
+    }
+    return () => { if (partyTimerRef.current) clearTimeout(partyTimerRef.current); };
+  }, [partyPopover]);
 
   const [qrOpen, setQrOpen] = useState(false);
   const [mobileUrl, setMobileUrl] = useState('');
@@ -165,13 +175,13 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
                       {detectedBpm ? (
                         <>
                           <span className="text-2xl font-bold text-pink-400 tabular-nums">{detectedBpm}</span>
-                          <span className="text-xs text-muted-foreground ml-1">BPM detected</span>
+                          <span className="text-xs text-muted-foreground ml-1">BPM</span>
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             → Target: 120–130 BPM · Speed: {Math.round(partyBeatRate * 100)}%
                           </p>
                         </>
                       ) : (
-                        <p className="text-xs text-muted-foreground animate-pulse">Analyzing tempo...</p>
+                        <p className="text-xs text-muted-foreground animate-pulse">Looking up BPM...</p>
                       )}
                     </div>
                   )}

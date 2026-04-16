@@ -73,6 +73,8 @@ model CachedTrack {
   billboardPeak   Int?
   billboardWeeks  Int?
   billboardCheckedAt DateTime?
+  bpm             Float?
+  bpmChecked      Boolean       @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
