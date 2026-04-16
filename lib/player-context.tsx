@@ -73,6 +73,8 @@ interface PlayerContextType extends PlayerState {
   setVolume: (vol: number) => void;
   setCurrentStationId: (id: string | null) => void;
   setCurrentStationName: (name: string | null) => void;
+  currentMixId: string | null;
+  setCurrentMixId: (id: string | null) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
   analyserNode: AnalyserNode | null;
   eqGains: EqGains;
@@ -109,6 +111,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queueIndex, setQueueIndex] = useState(-1);
   const [currentStationId, setCurrentStationId] = useState<string | null>(null);
   const [currentStationName, setCurrentStationName] = useState<string | null>(null);
+  const [currentMixId, setCurrentMixId] = useState<string | null>(null);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [eqGains, setEqGains] = useState<EqGains>({ bass: 0, mid: 0, treble: 0 });
   const [eqPreset, setEqPresetState] = useState('flat');
@@ -120,6 +123,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const crossfadingRef = useRef(false);
+  const skipLoadRef = useRef(false);
   const fetchingMoreRef = useRef(false);
   // Persistent Web Audio refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -385,6 +389,35 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [eqGains, advancedEqGains]);
 
+  const fetchMoreMixTracks = useCallback(async (mixId: string, existingIds: Set<string>) => {
+    if (fetchingMoreRef.current) return [];
+    fetchingMoreRef.current = true;
+    try {
+      const res = await fetch(`/api/mixes/${mixId}/tracks?limit=30`);
+      const data = await res?.json?.();
+      const newTracks: TrackInfo[] = (data?.tracks ?? [])
+        .filter((t: any) => !existingIds.has(t?.id ?? ''))
+        .map((t: any) => ({
+          id: t?.id ?? '',
+          title: t?.title ?? '',
+          artistName: t?.artist?.name ?? t?.artistName ?? '',
+          albumTitle: t?.album?.title ?? t?.albumTitle ?? '',
+          thumb: t?.thumb ?? t?.album?.thumb ?? null,
+          mediaKey: t?.mediaKey ?? null,
+          duration: t?.duration ?? null,
+          ratingKey: t?.ratingKey ?? '',
+          year: t?.year ?? t?.album?.year ?? null,
+          artistId: t?.artistId ?? null,
+          albumId: t?.albumId ?? null,
+        }));
+      return newTracks;
+    } catch {
+      return [];
+    } finally {
+      fetchingMoreRef.current = false;
+    }
+  }, []);
+
   const fetchMoreStationTracks = useCallback(async (stationId: string, existingIds: Set<string>) => {
     if (fetchingMoreRef.current) return [];
     fetchingMoreRef.current = true;
@@ -427,7 +460,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [queue]);
 
   useEffect(() => {
-    if (!currentStationId || queueIndex < 0) return;
+    const sourceId = currentStationId || currentMixId;
+    if (!sourceId || queueIndex < 0) return;
     const remaining = queue.length - queueIndex - 1;
     // Read station queue size from settings
     let queueSize = 5;
@@ -438,13 +472,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (remaining < queueSize) {
       const needed = queueSize - remaining;
       const existingIds = new Set(queue.map(t => t.id));
-      fetchMoreStationTracks(currentStationId, existingIds).then(newTracks => {
+      const fetchFn = currentMixId
+        ? fetchMoreMixTracks(currentMixId, existingIds)
+        : fetchMoreStationTracks(currentStationId!, existingIds);
+      fetchFn.then(newTracks => {
         if (newTracks.length > 0) {
           setQueue(prev => [...prev, ...newTracks.slice(0, Math.max(needed, 1))]);
         }
       });
     }
-  }, [queueIndex, currentStationId, queue.length, fetchMoreStationTracks, queue]);
+  }, [queueIndex, currentStationId, currentMixId, queue.length, fetchMoreStationTracks, fetchMoreMixTracks, queue]);
 
   const prevTrack = useCallback(() => {
     setQueueIndex(prev => {
@@ -498,6 +535,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [currentTrack?.id, currentTime, isPlaying]);
 
   useEffect(() => {
+    // Skip load if we just transferred from crossfade (audio already has correct src)
+    if (skipLoadRef.current) {
+      skipLoadRef.current = false;
+      return;
+    }
     const audio = audioRef?.current;
     if (!audio) return;
 
@@ -516,8 +558,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     if (isPlaying) {
       audio.play?.()?.catch?.(() => {});
+      // Resume crossfade audio too if mid-crossfade
+      if (crossfadingRef.current && crossfadeAudioRef.current) {
+        crossfadeAudioRef.current.play?.()?.catch?.(() => {});
+      }
     } else {
       audio.pause?.();
+      // Also pause crossfade audio if mid-crossfade
+      if (crossfadeAudioRef.current) {
+        crossfadeAudioRef.current.pause?.();
+      }
     }
   }, [isPlaying]);
 
@@ -569,10 +619,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (step >= STEPS) {
         if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
         crossfadeTimerRef.current = null;
-        // Transition complete - swap to next track
+        // Transition complete - transfer crossfade audio to main
         mainAudio.pause();
+        // Copy crossfade playback state to main audio so it continues seamlessly
+        const cfSrc = crossAudio.src;
+        const cfTime = crossAudio.currentTime;
+        // Stop crossfade audio
+        crossAudio.pause();
+        crossAudio.removeAttribute('src');
+        crossAudio.load();
+        // Load the same stream on main audio at the same position
+        mainAudio.src = cfSrc;
+        mainAudio.currentTime = cfTime;
+        mainAudio.volume = volume;
+        mainAudio.play?.()?.catch?.(() => {});
         crossfadingRef.current = false;
-        // Advance to next track
+        // Advance queue index without re-triggering the media load effect
+        skipLoadRef.current = true;
         nextTrack();
       }
     }, stepTime);
@@ -635,6 +698,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setVolume,
         setCurrentStationId,
         setCurrentStationName,
+        currentMixId,
+        setCurrentMixId,
         audioRef,
         analyserNode,
         eqGains,

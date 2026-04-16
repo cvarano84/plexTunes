@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 interface ArtistDetailViewProps {
   artistId: string;
+  initialAlbumId?: string;
   onNavigate: (view: ViewType, opts?: any) => void;
   onBack: () => void;
   bioHeight?: number;
@@ -35,7 +36,7 @@ function formatDuration(ms: number | null | undefined): string {
   return `${minutes}:${seconds?.toString?.()?.padStart?.(2, '0') ?? '00'}`;
 }
 
-export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeight = 30, albumHeight = 40, similarHeight = 30, trackWidth = 40 }: ArtistDetailViewProps) {
+export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate, onBack, bioHeight = 30, albumHeight = 40, similarHeight = 30, trackWidth = 40 }: ArtistDetailViewProps) {
   const [artist, setArtist] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAllTracks, setShowAllTracks] = useState(false);
@@ -125,6 +126,17 @@ export default function ArtistDetailView({ artistId, onNavigate, onBack, bioHeig
     }
     setAlbumTracksLoading(false);
   }, [selectedAlbum?.id]);
+
+  // Auto-select album if navigated with initialAlbumId
+  const initialAlbumHandled = useRef(false);
+  useEffect(() => {
+    if (!initialAlbumId || !artist || initialAlbumHandled.current) return;
+    const album = (artist?.cachedAlbums ?? []).find((a: any) => a.id === initialAlbumId);
+    if (album) {
+      initialAlbumHandled.current = true;
+      handleAlbumClick(album);
+    }
+  }, [initialAlbumId, artist, handleAlbumClick]);
 
   const handleBackToPopular = () => {
     setSelectedAlbum(null);

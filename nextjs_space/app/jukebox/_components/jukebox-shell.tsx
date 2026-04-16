@@ -32,20 +32,20 @@ function JukeboxInner() {
   // Settings state
   const [idleTimeout, setIdleTimeout] = useState(30);
   const [eqBands, setEqBands] = useState(32);
-  const [eqColorScheme, setEqColorScheme] = useState('classic');
-  const [previousTrackCount, setPreviousTrackCount] = useState(5);
-  const [keyboardSize, setKeyboardSize] = useState<'small' | 'medium' | 'large' | 'xl' | 'xxl'>('medium');
-  const [columnLayout, setColumnLayout] = useState('balanced');
+  const [eqColorScheme, setEqColorScheme] = useState('purple');
+  const [previousTrackCount, setPreviousTrackCount] = useState(3);
+  const [keyboardSize, setKeyboardSize] = useState<'small' | 'medium' | 'large' | 'xl' | 'xxl'>('xxl');
+  const [columnLayout, setColumnLayout] = useState('custom:30,45,25');
   const [artistRows, setArtistRows] = useState(4);
-  const [stationRows, setStationRows] = useState(1);
+  const [stationRows, setStationRows] = useState(3);
   const [lyricsZoom, setLyricsZoom] = useState(3);
   const [jukeboxTitle, setJukeboxTitle] = useState('');
   const [stationQueueSize, setStationQueueSize] = useState(5);
-  const [eqBarHeight, setEqBarHeight] = useState(48);
-  const [artistBioHeight, setArtistBioHeight] = useState(30);
-  const [artistAlbumHeight, setArtistAlbumHeight] = useState(40);
-  const [artistSimilarHeight, setArtistSimilarHeight] = useState(30);
-  const [artistTrackWidth, setArtistTrackWidth] = useState(40);
+  const [eqBarHeight, setEqBarHeight] = useState(96);
+  const [artistBioHeight, setArtistBioHeight] = useState(20);
+  const [artistAlbumHeight, setArtistAlbumHeight] = useState(55);
+  const [artistSimilarHeight, setArtistSimilarHeight] = useState(25);
+  const [artistTrackWidth, setArtistTrackWidth] = useState(25);
   const settingsLoadedRef = useRef(false);
   
   // Touch keyboard
@@ -275,7 +275,7 @@ function JukeboxInner() {
       <main className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'mixes' || view === 'artists' || view === 'stats' ? 'overflow-hidden pb-36' : 'overflow-y-auto pb-36'}`}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} />}
-        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} />}
+        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} stationRows={stationRows} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
@@ -289,6 +289,7 @@ function JukeboxInner() {
         {view === 'artist-detail' && (
           <ArtistDetailView
             artistId={selectedArtistId}
+            initialAlbumId={selectedAlbumId}
             onNavigate={navigate}
             onBack={goBack}
             bioHeight={artistBioHeight}

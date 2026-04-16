@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Disc3, Play, Loader2, Music2, Plus, Pencil, Trash2, X, Save, Check, Radio, Users } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Disc3, Play, Loader2, Music2, Plus, Pencil, Trash2, X, Save, Check, Radio, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 import { toast } from 'sonner';
@@ -11,15 +11,27 @@ import PlexImage from './plex-image';
 interface MixesViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   stationQueueSize?: number;
+  stationRows?: number;
 }
 
-function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize }: {
-  mix: any; onPlay: () => void; onEdit: () => void; onDelete: () => void; isPlaying: boolean; cardSize: number;
+/* ── Mix Card (matches station card styling) ── */
+function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNames, artistThumbs }: {
+  mix: any; onPlay: () => void; onEdit: () => void; onDelete: () => void;
+  isPlaying: boolean; cardSize: number; stationNames: Record<string, string>;
+  artistThumbs: Record<string, string | null>;
 }) {
-  const labelSize = cardSize > 300 ? 'text-xl' : cardSize > 200 ? 'text-lg' : 'text-base';
-  const subSize = cardSize > 300 ? 'text-sm' : 'text-xs';
+  const labelSize = cardSize > 400 ? 'text-2xl' : cardSize > 300 ? 'text-xl' : cardSize > 250 ? 'text-lg' : 'text-base';
+  const subSize = cardSize > 400 ? 'text-base' : cardSize > 300 ? 'text-sm' : 'text-xs';
   const stationCount = mix?.stationIds?.length ?? 0;
   const artistCount = mix?.artistIds?.length ?? 0;
+
+  // Build a sample art array from artist thumbs
+  const sampleArt = (mix?.artistIds ?? []).map((id: string) => artistThumbs[id]).filter(Boolean);
+  const useGrid3 = sampleArt.length >= 9;
+  const useGrid2 = sampleArt.length >= 4;
+  const gridCols = useGrid3 ? 3 : 2;
+  const gridCount = useGrid3 ? 9 : 4;
+  const imgSize = Math.round(cardSize / gridCols);
 
   return (
     <motion.div
@@ -30,8 +42,18 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize }: {
     >
       <button onClick={onPlay} disabled={isPlaying} className="w-full h-full text-left">
         <div className="relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-violet-900/60 to-indigo-950/50">
-          {mix?.imageUrl ? (
-            <div className="w-full h-full"><PlexImage thumb={mix.imageUrl} alt={mix.name} size={Math.round(cardSize * 2)} /></div>
+          {useGrid2 ? (
+            <div className="w-full h-full" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, 1fr)`, gridTemplateRows: `repeat(${gridCols}, 1fr)` }}>
+              {sampleArt.slice(0, gridCount).map((thumb: string, i: number) => (
+                <div key={i} className="w-full h-full overflow-hidden">
+                  <PlexImage thumb={thumb} alt="" size={imgSize} />
+                </div>
+              ))}
+            </div>
+          ) : sampleArt.length >= 1 ? (
+            <div className="w-full h-full">
+              <PlexImage thumb={sampleArt[0]} alt="" size={Math.round(cardSize * 2)} />
+            </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Disc3 className="w-16 h-16 text-white/20" />
@@ -54,8 +76,7 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize }: {
           </div>
         </div>
       </button>
-      {/* Edit/delete buttons on hover */}
-      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white transition-colors">
           <Pencil className="w-3.5 h-3.5" />
         </button>
@@ -67,26 +88,33 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize }: {
   );
 }
 
-export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesViewProps) {
+/* ── Main Component ── */
+export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3 }: MixesViewProps) {
   const [mixes, setMixes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingMix, setPlayingMix] = useState<string | null>(null);
-  const [editing, setEditing] = useState<any | null>(null); // null=list, 'new'=creating, object=editing
+  const [editing, setEditing] = useState<any | null>(null);
   const [stations, setStations] = useState<any[]>([]);
-  const [artists, setArtists] = useState<any[]>([]);
+  const [allArtists, setAllArtists] = useState<any[]>([]);
+  const [artistsLoading, setArtistsLoading] = useState(false);
   const [artistSearch, setArtistSearch] = useState('');
-  const [artistResults, setArtistResults] = useState<any[]>([]);
-  const { playQueue, setCurrentStationId, setCurrentStationName } = usePlayer();
+  const { playQueue, setCurrentStationId, setCurrentStationName, setCurrentMixId } = usePlayer();
   const containerRef = useRef<HTMLDivElement>(null);
+  const artistScrollRef = useRef<HTMLDivElement>(null);
+  const artistContainerRef = useRef<HTMLDivElement>(null);
   const [cardSize, setCardSize] = useState(200);
+  const [artistItemSize, setArtistItemSize] = useState(80);
 
   // Form state
   const [formName, setFormName] = useState('');
   const [formStationIds, setFormStationIds] = useState<string[]>([]);
   const [formArtistIds, setFormArtistIds] = useState<string[]>([]);
-  const [formArtistNames, setFormArtistNames] = useState<Record<string, string>>({});
   const [formPopularOnly, setFormPopularOnly] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Station names and artist thumbs for card display
+  const [stationNames, setStationNames] = useState<Record<string, string>>({});
+  const [artistThumbs, setArtistThumbs] = useState<Record<string, string | null>>({});
 
   const fetchMixes = useCallback(() => {
     setLoading(true);
@@ -95,39 +123,78 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
 
   useEffect(() => { fetchMixes(); }, [fetchMixes]);
 
-  // Fetch stations list for the editor
+  // Fetch stations + artist thumbs for display
   useEffect(() => {
-    if (editing !== null) {
-      fetch('/api/stations').then(r => r?.json?.()).then(data => setStations(data?.stations ?? [])).catch(() => {});
-    }
-  }, [editing]);
+    fetch('/api/stations').then(r => r?.json?.()).then(data => {
+      const sMap: Record<string, string> = {};
+      (data?.stations ?? []).forEach((s: any) => { sMap[s.id] = s.name; });
+      setStationNames(sMap);
+      setStations(data?.stations ?? []);
+    }).catch(() => {});
+  }, []);
 
-  // Search artists
+  // Collect all artist IDs from mixes to fetch their thumbs
   useEffect(() => {
-    if (!artistSearch || artistSearch.length < 2) { setArtistResults([]); return; }
-    const t = setTimeout(() => {
-      fetch(`/api/artists?search=${encodeURIComponent(artistSearch)}&limit=20`)
-        .then(r => r?.json?.())
-        .then(data => setArtistResults(data?.artists ?? []))
-        .catch(() => {});
-    }, 300);
-    return () => clearTimeout(t);
-  }, [artistSearch]);
+    const allIds = new Set<string>();
+    mixes.forEach(m => (m.artistIds ?? []).forEach((id: string) => allIds.add(id)));
+    if (allIds.size === 0) return;
+    fetch(`/api/artists?ids=${Array.from(allIds).join(',')}&limit=500`)
+      .then(r => r?.json?.())
+      .then(data => {
+        const tMap: Record<string, string | null> = {};
+        (data?.artists ?? []).forEach((a: any) => { tMap[a.id] = a.thumb ?? null; });
+        setArtistThumbs(tMap);
+      }).catch(() => {});
+  }, [mixes]);
 
-  // Card sizing
+  // Load all artists for editor
+  useEffect(() => {
+    if (editing === null) return;
+    if (allArtists.length > 0) return;
+    setArtistsLoading(true);
+    fetch('/api/artists?limit=5000&page=1')
+      .then(r => r?.json?.())
+      .then(data => { setAllArtists(data?.artists ?? []); setArtistsLoading(false); })
+      .catch(() => setArtistsLoading(false));
+  }, [editing, allArtists.length]);
+
+  // Card sizing (matches station card logic)
   useEffect(() => {
     const calcSize = () => {
       const container = containerRef.current;
       if (!container) return;
       const available = container.clientHeight;
-      const perRow = Math.max(120, Math.round(available * 0.70));
+      const gap = 12;
+      const totalGaps = (stationRows - 1) * gap;
+      const perRow = Math.max(120, Math.round((available - totalGaps) * 0.70 / stationRows));
       setCardSize(perRow);
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [mixes]);
+  }, [mixes, stationRows]);
+
+  // Artist grid sizing for editor (4 rows, smaller)
+  useEffect(() => {
+    if (editing === null) return;
+    const calcSize = () => {
+      const container = artistContainerRef.current;
+      if (!container) return;
+      const available = container.clientHeight;
+      const gapSize = 8;
+      const labelHeight = 24;
+      const rows = 4;
+      const totalGaps = (rows - 1) * gapSize;
+      const perRow = Math.max(50, Math.floor((available - totalGaps) / rows) - labelHeight);
+      setArtistItemSize(Math.min(120, perRow));
+    };
+    // Delay to let DOM settle
+    const t = setTimeout(calcSize, 50);
+    const ro = new ResizeObserver(calcSize);
+    if (artistContainerRef.current) ro.observe(artistContainerRef.current);
+    return () => { clearTimeout(t); ro.disconnect(); };
+  }, [editing]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);
@@ -150,6 +217,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
       if (tracks?.length > 0) {
         playQueue(tracks);
         setCurrentStationId(null);
+        setCurrentMixId(mix.id);
         setCurrentStationName(mix?.name ?? 'Mix');
         toast.success(`Playing ${mix?.name ?? 'Mix'}`);
       } else {
@@ -176,17 +244,6 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
     setFormArtistIds(mix.artistIds ?? []);
     setFormPopularOnly(mix.popularOnly ?? true);
     setArtistSearch('');
-    // Pre-populate artist names
-    if (mix.artistIds?.length > 0) {
-      fetch(`/api/artists?ids=${mix.artistIds.join(',')}`)
-        .then(r => r?.json?.())
-        .then(data => {
-          const names: Record<string, string> = {};
-          (data?.artists ?? []).forEach((a: any) => { if (a?.id) names[a.id] = a?.name ?? ''; });
-          setFormArtistNames(prev => ({ ...prev, ...names }));
-        })
-        .catch(() => {});
-    }
   };
 
   const startNew = () => {
@@ -194,7 +251,6 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
     setFormName('');
     setFormStationIds([]);
     setFormArtistIds([]);
-    setFormArtistNames({});
     setFormPopularOnly(true);
     setArtistSearch('');
   };
@@ -222,23 +278,25 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
     setFormStationIds(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
 
-  const addArtist = (artist: any) => {
-    if (!formArtistIds.includes(artist.id)) {
-      setFormArtistIds(prev => [...prev, artist.id]);
-      setFormArtistNames(prev => ({ ...prev, [artist.id]: artist.name }));
-    }
-    setArtistSearch('');
-    setArtistResults([]);
+  const toggleArtist = (id: string) => {
+    setFormArtistIds(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   };
 
-  const removeArtist = (id: string) => {
-    setFormArtistIds(prev => prev.filter(a => a !== id));
-  };
+  // Filter artists for the grid
+  const filteredArtists = artistSearch
+    ? allArtists.filter(a => (a?.name ?? '').toLowerCase().includes(artistSearch.toLowerCase()))
+    : allArtists;
 
-  // Editor view
+  // Build columns for artist grid (4 rows)
+  const artistColumns: any[][] = [];
+  for (let i = 0; i < filteredArtists.length; i += 4) {
+    artistColumns.push(filteredArtists.slice(i, i + 4));
+  }
+
+  // ── Editor view ──
   if (editing !== null) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
+      <div className="flex-1 flex flex-col overflow-hidden p-4 gap-3">
         <div className="flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-display font-bold flex items-center gap-2">
             <Disc3 className="w-5 h-5 text-primary" />
@@ -254,35 +312,25 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
           {/* Name */}
           <div>
             <label className="text-sm font-medium mb-1 block">Mix Name</label>
-            <input
-              value={formName}
-              onChange={e => setFormName(e.target.value)}
-              placeholder="My Custom Mix"
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border/30 text-sm"
-            />
+            <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="My Custom Mix"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border/30 text-sm" />
           </div>
 
-          {/* Stations selection */}
+          {/* Stations */}
           <div>
             <label className="text-sm font-medium mb-2 flex items-center gap-2">
               <Radio className="w-4 h-4 text-primary" /> Stations
             </label>
-            <p className="text-xs text-muted-foreground mb-2">Select stations to pull tracks from</p>
             <div className="flex flex-wrap gap-2">
               {stations.map((s: any) => (
-                <button
-                  key={s.id}
-                  onClick={() => toggleStation(s.id)}
+                <button key={s.id} onClick={() => toggleStation(s.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    formStationIds.includes(s.id)
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'
-                  }`}
-                >
+                    formStationIds.includes(s.id) ? 'bg-primary text-primary-foreground' : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'
+                  }`}>
                   {formStationIds.includes(s.id) && <Check className="w-3 h-3 inline mr-1" />}
                   {s.name}
                 </button>
@@ -290,82 +338,89 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
             </div>
           </div>
 
-          {/* Artist emphasis */}
-          <div>
-            <label className="text-sm font-medium mb-2 flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary" /> Emphasized Artists
-            </label>
-            <p className="text-xs text-muted-foreground mb-2">Add artists whose tracks will be emphasized in the mix</p>
-            {/* Selected artists chips */}
-            {formArtistIds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {formArtistIds.map(id => (
-                  <span key={id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/20 text-primary text-xs">
-                    {formArtistNames[id] ?? id}
-                    <button onClick={() => removeArtist(id)} className="hover:text-destructive"><X className="w-3 h-3" /></button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {/* Search input */}
-            <input
-              value={artistSearch}
-              onChange={e => setArtistSearch(e.target.value)}
-              placeholder="Search artists to add..."
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border/30 text-sm"
-            />
-            {artistResults.length > 0 && (
-              <div className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-secondary border border-border/30">
-                {artistResults.map((a: any) => (
-                  <button
-                    key={a.id}
-                    onClick={() => addArtist(a)}
-                    disabled={formArtistIds.includes(a.id)}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 flex items-center gap-2 ${
-                      formArtistIds.includes(a.id) ? 'opacity-40' : ''
-                    }`}
-                  >
-                    <div className="w-6 h-6 rounded-full overflow-hidden bg-muted flex-shrink-0">
-                      {a.thumb ? <PlexImage thumb={a.thumb} alt={a.name} size={48} /> : <Users className="w-full h-full p-1 text-muted-foreground" />}
-                    </div>
-                    {a.name}
-                    {formArtistIds.includes(a.id) && <Check className="w-3 h-3 ml-auto text-primary" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Popular only toggle */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setFormPopularOnly(!formPopularOnly)}
-              className={`w-10 h-5 rounded-full transition-colors relative ${
-                formPopularOnly ? 'bg-primary' : 'bg-secondary'
-              }`}
-            >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                formPopularOnly ? 'left-5' : 'left-0.5'
-              }`} />
+            <button onClick={() => setFormPopularOnly(!formPopularOnly)}
+              className={`w-10 h-5 rounded-full transition-colors relative ${formPopularOnly ? 'bg-primary' : 'bg-secondary'}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${formPopularOnly ? 'left-5' : 'left-0.5'}`} />
             </button>
             <span className="text-sm">Popular tracks only</span>
+          </div>
+
+          {/* Artist selection grid */}
+          <div className="flex flex-col min-h-0" style={{ height: '50%' }}>
+            <div className="flex items-center justify-between mb-1 flex-shrink-0">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" /> Emphasized Artists
+                {formArtistIds.length > 0 && <span className="text-xs text-primary">({formArtistIds.length} selected)</span>}
+              </label>
+            </div>
+            {/* Search */}
+            <input value={artistSearch} onChange={e => setArtistSearch(e.target.value)}
+              placeholder="Search artists..." className="w-full px-3 py-1.5 rounded-lg bg-secondary border border-border/30 text-xs mb-2 flex-shrink-0" />
+            {/* Selected artists chips */}
+            {formArtistIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2 flex-shrink-0 max-h-16 overflow-y-auto">
+                {formArtistIds.map(id => {
+                  const a = allArtists.find(ar => ar.id === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-[10px]">
+                      {a?.name ?? id}
+                      <button onClick={() => toggleArtist(id)} className="hover:text-destructive"><X className="w-2.5 h-2.5" /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {/* Artist grid (4 rows, scrollable) */}
+            {artistsLoading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div ref={artistContainerRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0">
+                <div className="flex gap-2 h-full items-center">
+                  {artistColumns.map((col, ci) => (
+                    <div key={ci} className="flex flex-col gap-2 flex-shrink-0" style={{ width: artistItemSize }}>
+                      {col.map((artist: any) => {
+                        const selected = formArtistIds.includes(artist.id);
+                        return (
+                          <button key={artist.id} onClick={() => toggleArtist(artist.id)}
+                            className={`group text-center flex-shrink-0 relative ${selected ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>
+                            <div className="relative rounded-full overflow-hidden bg-secondary mx-auto transition-all"
+                              style={{ width: artistItemSize, height: artistItemSize }}>
+                              <PlexImage thumb={artist?.thumb} alt={artist?.name ?? ''} />
+                              {selected && (
+                                <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
+                                  <Check className="w-1/3 h-1/3 text-white" />
+                                </div>
+                              )}
+                            </div>
+                            <h4 className="font-medium text-[10px] truncate px-0.5 mt-0.5">{artist?.name ?? 'Unknown'}</h4>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  <div className="flex-shrink-0 w-4 h-full" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  // List view
+  // ── List view ──
   return (
     <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden px-4 py-3">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <h2 className="text-lg font-display font-bold flex items-center gap-2">
-          <Disc3 className="w-5 h-5 text-primary" /> Mixes
+        <h2 className="text-[clamp(1.25rem,2.5vw,2rem)] font-display font-bold tracking-tight flex items-center gap-3">
+          <Disc3 className="w-[clamp(1.25rem,2vw,1.75rem)] h-[clamp(1.25rem,2vw,1.75rem)] text-primary" /> Mixes
         </h2>
-        <button
-          onClick={startNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
+        <button onClick={startNew}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
           <Plus className="w-4 h-4" /> New Mix
         </button>
       </div>
@@ -385,7 +440,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden scrollbar-none">
-          <div className="flex gap-3 h-full items-center">
+          <div className="flex gap-3 h-full items-center flex-wrap content-center" style={{ flexWrap: stationRows > 1 ? 'wrap' : 'nowrap' }}>
             {mixes.map((mix: any) => (
               <MixCard
                 key={mix.id}
@@ -395,6 +450,8 @@ export default function MixesView({ onNavigate, stationQueueSize = 25 }: MixesVi
                 onDelete={() => handleDelete(mix.id)}
                 isPlaying={playingMix === mix.id}
                 cardSize={cardSize}
+                stationNames={stationNames}
+                artistThumbs={artistThumbs}
               />
             ))}
           </div>

@@ -291,10 +291,14 @@ export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 
             </div>
           ) : null}
 
-          {/* Square album art */}
-          <div className="relative rounded-xl overflow-hidden shadow-2xl" style={{ width: 'clamp(180px, 22vw, 420px)', height: 'clamp(180px, 22vw, 420px)' }}>
+          {/* Square album art - clickable to go to album detail */}
+          <button
+            onClick={() => { if (currentTrack?.artistId && onNavigate) onNavigate('artist-detail', { artistId: currentTrack.artistId, albumId: currentTrack.albumId }); }}
+            className={`relative rounded-xl overflow-hidden shadow-2xl ${currentTrack?.artistId && onNavigate ? 'cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all' : ''}`}
+            style={{ width: 'clamp(180px, 22vw, 420px)', height: 'clamp(180px, 22vw, 420px)' }}
+          >
             <PlexImage thumb={currentTrack?.thumb} alt={currentTrack?.title ?? ''} size={600} />
-          </div>
+          </button>
 
           {/* Spinning vinyl below the art */}
           <div className="relative" style={{ width: 'clamp(60px, 6vw, 110px)', height: 'clamp(60px, 6vw, 110px)' }}>
