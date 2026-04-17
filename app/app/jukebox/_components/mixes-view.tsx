@@ -191,30 +191,30 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor - calculate once from parent height, no ResizeObserver
-  // (ResizeObserver causes infinite loop: set size → icons grow → observer fires → repeat)
+  // Artist grid sizing for editor — mirror artists-view pattern exactly:
+  // measure the SCROLL CONTAINER (not the section wrapper) so chips/search don't contaminate the measurement.
+  // Safe to use ResizeObserver because the scroll container has `overflow-y-hidden`, so icon growth cannot
+  // cause the container's height to change — no feedback loop possible.
   useEffect(() => {
     if (editing === null) return;
+    if (artistsLoading) return; // wait until grid is actually in DOM
     const calcSize = () => {
-      const section = artistScrollRef.current;
-      if (!section) return;
-      const available = section.clientHeight;
-      if (available < 50) return; // DOM not ready yet
-      // Subtract label row (~28px) + search input (~32px) + arrow buttons padding (~16px)
-      const overhead = 76;
+      const container = artistContainerRef.current;
+      if (!container) return;
+      const available = container.clientHeight;
+      if (available < 50) return;
       const gapSize = 8;
-      const labelHeight = 18;
+      const labelHeight = 22; // label text-[10px] + mt-0.5 margin
       const rows = 4;
       const totalGaps = (rows - 1) * gapSize;
-      const usable = available - overhead;
-      const perRow = Math.max(60, Math.floor((usable - totalGaps - labelHeight * rows) / rows));
+      const perRow = Math.max(60, Math.min(200, Math.floor((available - totalGaps) / rows) - labelHeight));
       setArtistItemSize(perRow);
     };
-    // Single delayed calculation — no observer to avoid feedback loop
-    const t1 = setTimeout(calcSize, 100);
-    const t2 = setTimeout(calcSize, 300); // retry in case DOM wasn't ready
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [editing]);
+    calcSize();
+    const ro = new ResizeObserver(calcSize);
+    if (artistContainerRef.current) ro.observe(artistContainerRef.current);
+    return () => ro.disconnect();
+  }, [editing, artistsLoading]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);
