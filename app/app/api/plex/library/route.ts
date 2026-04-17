@@ -1,17 +1,16 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getMusicLibrarySections } from '@/lib/plex';
+import { getActiveAdapter } from '@/lib/media/factory';
 
 export async function GET() {
   try {
-    const config = await prisma.plexConfig.findUnique({ where: { id: 'default' } });
-    if (!config) {
-      return NextResponse.json({ error: 'Plex not configured' }, { status: 400 });
+    const ctx = await getActiveAdapter();
+    if (!ctx) {
+      return NextResponse.json({ error: 'Media server not configured' }, { status: 400 });
     }
-
-    const sections = await getMusicLibrarySections(config.serverUrl, config.token);
+    const sections = await ctx.adapter.getLibrarySections();
+    // Preserve backward compat with the existing setup UI which reads `sections`.
     return NextResponse.json({ sections });
   } catch (e: any) {
     console.error('Library GET error:', e?.message);

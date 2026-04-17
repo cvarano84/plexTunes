@@ -42,6 +42,8 @@ export async function GET() {
       plex: {
         configured: !!plexConfig,
         serverUrl: plexConfig?.serverUrl ?? null,
+        // Multi-backend: expose the active server type and label for the diagnostics UI.
+        serverType: (plexConfig as any)?.serverType ?? 'plex',
       },
       library: {
         artists: artistCount,

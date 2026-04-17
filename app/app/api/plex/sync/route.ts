@@ -2,186 +2,157 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { plexFetch } from '@/lib/plex';
+import { getActiveAdapter } from '@/lib/media/factory';
 import { mapGenreToStation, getDecadeFromYear, STATION_TEMPLATES } from '@/lib/stations';
 
-const PAGE_SIZE = 100;
-
-async function fetchAllPaged(serverUrl: string, token: string, sectionId: string, type: number): Promise<any[]> {
-  const all: any[] = [];
-  let start = 0;
-  let total = Infinity;
-  
-  while (start < total) {
-    const data = await plexFetch(serverUrl, token, `/library/sections/${sectionId}/all?type=${type}&X-Plex-Container-Start=${start}&X-Plex-Container-Size=${PAGE_SIZE}`);
-    const container = data?.MediaContainer;
-    total = container?.totalSize ?? container?.size ?? 0;
-    const items = container?.Metadata ?? [];
-    all.push(...items);
-    start += PAGE_SIZE;
-    if (items?.length === 0) break;
-  }
-  return all;
-}
+/**
+ * Backend-agnostic library sync.
+ *   - Asks the active adapter (Plex / Jellyfin / Subsonic) for the full library.
+ *   - Upserts CachedArtist / CachedAlbum / CachedTrack rows.
+ *   - Generates the usual template stations.
+ *   - Kicks off background popularity scoring.
+ */
 
 export async function POST(req: NextRequest) {
   try {
-    const config = await prisma.plexConfig.findUnique({ where: { id: 'default' } });
-    if (!config) {
-      return NextResponse.json({ error: 'Plex not configured' }, { status: 400 });
+    const ctx = await getActiveAdapter();
+    if (!ctx) {
+      return NextResponse.json({ error: 'Media server not configured' }, { status: 400 });
     }
 
     const body = await req?.json?.().catch(() => ({}));
-    const sectionId = body?.sectionId ?? '';
+    // Accept either an explicit sectionId or a `fullSync: true` which falls back to the
+    // libraryId we persisted during the initial setup wizard. This keeps the
+    // "Resync Library" button working without asking the user to pick a library again.
+    let sectionId: string = body?.sectionId ?? '';
     if (!sectionId) {
-      return NextResponse.json({ error: 'Section ID required' }, { status: 400 });
+      sectionId = ctx.config.libraryId ?? '';
     }
+    if (!sectionId) {
+      return NextResponse.json(
+        { error: 'Section ID required. Open the setup wizard to pick a library first.' },
+        { status: 400 },
+      );
+    }
+
+    // Persist the selected library so subsequent calls know which scope we're in.
+    await prisma.plexConfig.update({
+      where: { id: 'default' },
+      data: { libraryId: sectionId },
+    }).catch(() => {});
 
     // Mark sync in progress
     await prisma.librarySyncStatus.upsert({
       where: { id: 'default' },
-      update: { syncInProgress: true, syncProgress: 0, syncMessage: 'Fetching artists...' },
-      create: { id: 'default', syncInProgress: true, syncProgress: 0, syncMessage: 'Fetching artists...' },
+      update: { syncInProgress: true, syncProgress: 0, syncMessage: 'Starting sync...' },
+      create: { id: 'default', syncInProgress: true, syncProgress: 0, syncMessage: 'Starting sync...' },
     });
 
-    // Fetch all artists
-    const artists = await fetchAllPaged(config.serverUrl, config.token, sectionId, 8);
-    
-    await prisma.librarySyncStatus.update({
-      where: { id: 'default' },
-      data: { syncProgress: 20, syncMessage: `Found ${artists?.length ?? 0} artists. Fetching albums...` },
+    // Fetch full library via adapter
+    const bundle = await ctx.adapter.getFullLibrary(sectionId, async (pct, message) => {
+      await prisma.librarySyncStatus.update({
+        where: { id: 'default' },
+        data: { syncProgress: pct, syncMessage: message },
+      }).catch(() => {});
     });
 
-    // Fetch all albums
-    const albums = await fetchAllPaged(config.serverUrl, config.token, sectionId, 9);
-    
-    await prisma.librarySyncStatus.update({
-      where: { id: 'default' },
-      data: { syncProgress: 40, syncMessage: `Found ${albums?.length ?? 0} albums. Fetching tracks...` },
-    });
-
-    // Fetch all tracks
-    const tracks = await fetchAllPaged(config.serverUrl, config.token, sectionId, 10);
-    
-    await prisma.librarySyncStatus.update({
-      where: { id: 'default' },
-      data: { syncProgress: 60, syncMessage: `Found ${tracks?.length ?? 0} tracks. Saving to database...` },
-    });
-
-    // Build artist map
-    const artistMap = new Map<string, any>();
-    for (const a of (artists ?? [])) {
-      const key = a?.ratingKey?.toString?.() ?? '';
-      if (key) artistMap.set(key, a);
-    }
+    const { artists, albums, tracks } = bundle;
 
     // Save artists
-    for (const a of (artists ?? [])) {
-      const rk = a?.ratingKey?.toString?.() ?? '';
-      if (!rk) continue;
+    const artistIdSet = new Set<string>();
+    for (const a of artists) {
+      artistIdSet.add(a.id);
+      // ratingKey must be unique; derive from our normalized id (strip 'artist-' prefix for consistency with legacy behavior)
+      const rk = a.id.replace(/^artist-/, '');
       await prisma.cachedArtist.upsert({
         where: { ratingKey: rk },
         update: {
-          name: a?.title ?? 'Unknown Artist',
-          thumb: a?.thumb ?? null,
-          addedAt: a?.addedAt ?? null,
+          name: a.name,
+          thumb: a.thumb,
+          addedAt: a.addedAt,
         },
         create: {
-          id: `artist-${rk}`,
+          id: a.id,
           ratingKey: rk,
-          name: a?.title ?? 'Unknown Artist',
-          thumb: a?.thumb ?? null,
-          addedAt: a?.addedAt ?? null,
-        },
-      });
-    }
-
-    // Build album map
-    const albumMap = new Map<string, any>();
-    for (const al of (albums ?? [])) {
-      const key = al?.ratingKey?.toString?.() ?? '';
-      if (key) albumMap.set(key, al);
-    }
-
-    // Save albums 
-    for (const al of (albums ?? [])) {
-      const rk = al?.ratingKey?.toString?.() ?? '';
-      if (!rk) continue;
-      const parentRk = al?.parentRatingKey?.toString?.() ?? '';
-      const artistExists = parentRk ? artistMap.has(parentRk) : false;
-      const artistId = artistExists ? `artist-${parentRk}` : null;
-      if (!artistId) continue;
-      
-      const genre = al?.Genre?.[0]?.tag ?? null;
-      
-      await prisma.cachedAlbum.upsert({
-        where: { ratingKey: rk },
-        update: {
-          title: al?.title ?? 'Unknown Album',
-          year: al?.year ?? null,
-          thumb: al?.thumb ?? null,
-          genre,
-        },
-        create: {
-          id: `album-${rk}`,
-          ratingKey: rk,
-          title: al?.title ?? 'Unknown Album',
-          year: al?.year ?? null,
-          thumb: al?.thumb ?? null,
-          artistId,
-          genre,
+          name: a.name,
+          thumb: a.thumb,
+          addedAt: a.addedAt,
         },
       });
     }
 
     await prisma.librarySyncStatus.update({
       where: { id: 'default' },
-      data: { syncProgress: 75, syncMessage: 'Saving tracks...' },
+      data: { syncProgress: 70, syncMessage: 'Saving albums...' },
     });
 
-    // Save tracks
-    for (const t of (tracks ?? [])) {
-      const rk = t?.ratingKey?.toString?.() ?? '';
-      if (!rk) continue;
-      
-      const albumRk = t?.parentRatingKey?.toString?.() ?? '';
-      const grandparentRk = t?.grandparentRatingKey?.toString?.() ?? '';
-      const albumId = albumRk && albumMap.has(albumRk) ? `album-${albumRk}` : null;
-      const artistId = grandparentRk && artistMap.has(grandparentRk) ? `artist-${grandparentRk}` : null;
-      if (!albumId || !artistId) continue;
+    // Save albums (skip if artist is missing)
+    const albumIdSet = new Set<string>();
+    for (const al of albums) {
+      if (!al.artistId || !artistIdSet.has(al.artistId)) continue;
+      albumIdSet.add(al.id);
+      const rk = al.id.replace(/^album-/, '');
+      await prisma.cachedAlbum.upsert({
+        where: { ratingKey: rk },
+        update: {
+          title: al.title,
+          year: al.year,
+          thumb: al.thumb,
+          genre: al.genre,
+        },
+        create: {
+          id: al.id,
+          ratingKey: rk,
+          title: al.title,
+          year: al.year,
+          thumb: al.thumb,
+          artistId: al.artistId,
+          genre: al.genre,
+        },
+      });
+    }
 
-      const genre = t?.Genre?.[0]?.tag ?? null;
-      const mediaKey = t?.Media?.[0]?.Part?.[0]?.key ?? null;
-      
+    await prisma.librarySyncStatus.update({
+      where: { id: 'default' },
+      data: { syncProgress: 80, syncMessage: 'Saving tracks...' },
+    });
+
+    // Save tracks (skip if album or artist is missing)
+    let savedTracks = 0;
+    for (const t of tracks) {
+      if (!t.albumId || !albumIdSet.has(t.albumId)) continue;
+      if (!t.artistId || !artistIdSet.has(t.artistId)) continue;
+      const rk = t.id.replace(/^track-/, '');
       await prisma.cachedTrack.upsert({
         where: { ratingKey: rk },
         update: {
-          title: t?.title ?? 'Unknown Track',
-          duration: t?.duration ?? null,
-          trackNumber: t?.index ?? null,
-          year: t?.year ?? t?.parentYear ?? null,
-          genre,
-          artistName: t?.grandparentTitle ?? null,
-          albumTitle: t?.parentTitle ?? null,
-          thumb: t?.thumb ?? t?.parentThumb ?? null,
-          mediaKey,
+          title: t.title,
+          duration: t.duration,
+          trackNumber: t.trackNumber,
+          year: t.year,
+          genre: t.genre,
+          artistName: t.artistName,
+          albumTitle: t.albumTitle,
+          thumb: t.thumb,
+          mediaKey: t.mediaKey,
         },
         create: {
-          id: `track-${rk}`,
+          id: t.id,
           ratingKey: rk,
-          title: t?.title ?? 'Unknown Track',
-          duration: t?.duration ?? null,
-          trackNumber: t?.index ?? null,
-          year: t?.year ?? t?.parentYear ?? null,
-          genre,
-          artistId,
-          artistName: t?.grandparentTitle ?? null,
-          albumId,
-          albumTitle: t?.parentTitle ?? null,
-          thumb: t?.thumb ?? t?.parentThumb ?? null,
-          mediaKey,
+          title: t.title,
+          duration: t.duration,
+          trackNumber: t.trackNumber,
+          year: t.year,
+          genre: t.genre,
+          artistId: t.artistId,
+          artistName: t.artistName,
+          albumId: t.albumId,
+          albumTitle: t.albumTitle,
+          thumb: t.thumb,
+          mediaKey: t.mediaKey,
         },
       });
+      savedTracks += 1;
     }
 
     await prisma.librarySyncStatus.update({
@@ -195,10 +166,10 @@ export async function POST(req: NextRequest) {
     });
 
     for (const template of STATION_TEMPLATES) {
-      const matchingTracks = allCachedTracks?.filter?.((t: any) => {
-        const trackDecade = getDecadeFromYear(t?.year);
+      const matchingTracks = allCachedTracks?.filter?.((tt: any) => {
+        const trackDecade = getDecadeFromYear(tt?.year);
         if (trackDecade !== template.decade) return false;
-        const trackGenres = mapGenreToStation(t?.genre, t?.album?.genre);
+        const trackGenres = mapGenreToStation(tt?.genre, tt?.album?.genre);
         return trackGenres?.includes?.(template.genre) ?? false;
       }) ?? [];
 
@@ -233,8 +204,8 @@ export async function POST(req: NextRequest) {
       { name: 'Dance Hits', genre: 'Dance', description: 'The hottest dance and electronic tracks' },
     ];
     for (const hits of HITS_STATIONS) {
-      const genreTracks = allCachedTracks.filter((t: any) => {
-        const mapped = mapGenreToStation(t?.genre, t?.album?.genre);
+      const genreTracks = allCachedTracks.filter((tt: any) => {
+        const mapped = mapGenreToStation(tt?.genre, tt?.album?.genre);
         return mapped.includes(hits.genre);
       });
       if (genreTracks.length >= 10) {
@@ -303,17 +274,16 @@ export async function POST(req: NextRequest) {
         syncProgress: 100,
         syncMessage: 'Sync complete!',
         lastSyncAt: new Date(),
-        totalArtists: artists?.length ?? 0,
-        totalAlbums: albums?.length ?? 0,
-        totalTracks: tracks?.length ?? 0,
+        totalArtists: artists.length,
+        totalAlbums: albums.length,
+        totalTracks: savedTracks,
       },
     });
 
-    // Auto-trigger Spotify popularity check in the background
+    // Auto-trigger popularity check in the background
     try {
       const uncheckedCount = await prisma.cachedTrack.count({ where: { spotifyChecked: false } });
       if (uncheckedCount > 0) {
-        // Fire off popularity check in background (don't await)
         (async () => {
           try {
             const { getBatchPopularity } = await import('@/lib/spotify');
@@ -351,9 +321,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      artists: artists?.length ?? 0,
-      albums: albums?.length ?? 0,
-      tracks: tracks?.length ?? 0,
+      artists: artists.length,
+      albums: albums.length,
+      tracks: savedTracks,
     });
   } catch (e: any) {
     console.error('Sync error:', e?.message);

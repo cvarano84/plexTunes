@@ -641,17 +641,14 @@ export default function SettingsView({
   const handleResync = async () => {
     setResyncing(true);
     try {
-      const libRes = await fetch('/api/plex/library');
-      const libData = await libRes.json();
-      const sections = libData?.sections ?? [];
-      if (sections.length > 0) {
-        await fetch('/api/plex/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionId: sections[0].key }),
-        });
-        setTimeout(fetchDiagnostics, 2000);
-      }
+      // Backend-agnostic: the sync route falls back to the saved libraryId when no
+      // sectionId is passed, so we just trigger the sync directly.
+      await fetch('/api/plex/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullSync: true }),
+      });
+      setTimeout(fetchDiagnostics, 2000);
     } catch { /* ignore */ }
     setResyncing(false);
   };
@@ -997,7 +994,13 @@ export default function SettingsView({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <StatusBadge
             ok={diagnostics ? diagnostics.plex?.configured : null}
-            label="Plex Connection"
+            label={`${
+              diagnostics?.plex?.serverType === 'jellyfin'
+                ? 'Jellyfin'
+                : diagnostics?.plex?.serverType === 'subsonic'
+                ? 'Navidrome / Subsonic'
+                : 'Plex'
+            } Connection`}
             detail={diagnostics?.plex?.serverUrl ?? 'Checking...'}
           />
           <StatusBadge
@@ -1442,11 +1445,19 @@ export default function SettingsView({
       {/* Metadata Dashboard */}
       <MetadataDashboard />
 
-      {/* Plex Config */}
+      {/* Media Server Config */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <h3 className="text-lg font-display font-semibold mb-3">Plex Configuration</h3>
+        <h3 className="text-lg font-display font-semibold mb-3">Media Server Configuration</h3>
         <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-          <p className="text-sm text-muted-foreground mb-3">Reconfigure your Plex server connection or re-sync your library.</p>
+          <p className="text-sm text-muted-foreground mb-3">
+            Currently connected to <strong>{
+              diagnostics?.plex?.serverType === 'jellyfin'
+                ? 'Jellyfin'
+                : diagnostics?.plex?.serverType === 'subsonic'
+                ? 'Navidrome / Subsonic'
+                : 'Plex'
+            }</strong>. Switch backends or re-sync your library from the setup wizard.
+          </p>
           <button onClick={() => { window.location.href = '/setup'; }} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             Open Setup Wizard
           </button>
