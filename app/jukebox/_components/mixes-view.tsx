@@ -407,7 +407,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <div ref={artistContainerRef} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0">
+                <div ref={artistContainerRef} className="flex-1 self-stretch overflow-x-auto overflow-y-hidden scrollbar-none min-h-0">
                   <div className="flex gap-2 h-full items-center">
                     {artistColumns.map((col, ci) => (
                       <div key={ci} className="flex flex-col gap-2 flex-shrink-0" style={{ width: artistItemSize }}>
