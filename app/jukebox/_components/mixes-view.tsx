@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Disc3, Play, Loader2, Music2, Plus, Pencil, Trash2, X, Save, Check, Radio, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
@@ -15,18 +15,28 @@ interface MixesViewProps {
 }
 
 /* ── Mix Card (matches station card styling) ── */
-function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNames, artistThumbs }: {
+function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNames, artistThumbs, stationArtMap }: {
   mix: any; onPlay: () => void; onEdit: () => void; onDelete: () => void;
   isPlaying: boolean; cardSize: number; stationNames: Record<string, string>;
   artistThumbs: Record<string, string | null>;
+  stationArtMap: Record<string, string[]>;
 }) {
   const labelSize = cardSize > 400 ? 'text-2xl' : cardSize > 300 ? 'text-xl' : cardSize > 250 ? 'text-lg' : 'text-base';
   const subSize = cardSize > 400 ? 'text-base' : cardSize > 300 ? 'text-sm' : 'text-xs';
   const stationCount = mix?.stationIds?.length ?? 0;
   const artistCount = mix?.artistIds?.length ?? 0;
 
-  // Build a sample art array from artist thumbs
-  const sampleArt = (mix?.artistIds ?? []).map((id: string) => artistThumbs[id]).filter(Boolean);
+  // Build a sample art array from artist thumbs, fall back to station art
+  let sampleArt = (mix?.artistIds ?? []).map((id: string) => artistThumbs[id]).filter(Boolean);
+  if (sampleArt.length === 0 && stationCount > 0) {
+    const stationArts: string[] = [];
+    (mix.stationIds ?? []).forEach((sid: string) => {
+      (stationArtMap[sid] ?? []).forEach((url: string) => {
+        if (!stationArts.includes(url)) stationArts.push(url);
+      });
+    });
+    sampleArt = stationArts;
+  }
   const useGrid3 = sampleArt.length >= 9;
   const useGrid2 = sampleArt.length >= 4;
   const gridCols = useGrid3 ? 3 : 2;
@@ -95,6 +105,11 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const [playingMix, setPlayingMix] = useState<string | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [stations, setStations] = useState<any[]>([]);
+  const stationArtMap = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    stations.forEach((s: any) => { m[s.id] = s.sampleArt ?? []; });
+    return m;
+  }, [stations]);
   const [allArtists, setAllArtists] = useState<any[]>([]);
   const [artistsLoading, setArtistsLoading] = useState(false);
   const [artistSearch, setArtistSearch] = useState('');
@@ -176,27 +191,30 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor - scale to fill available space
+  // Artist grid sizing for editor — mirror artists-view pattern exactly:
+  // measure the SCROLL CONTAINER (not the section wrapper) so chips/search don't contaminate the measurement.
+  // Safe to use ResizeObserver because the scroll container has `overflow-y-hidden`, so icon growth cannot
+  // cause the container's height to change — no feedback loop possible.
   useEffect(() => {
     if (editing === null) return;
+    if (artistsLoading) return; // wait until grid is actually in DOM
     const calcSize = () => {
       const container = artistContainerRef.current;
       if (!container) return;
       const available = container.clientHeight;
+      if (available < 50) return;
       const gapSize = 8;
-      const labelHeight = 20;
+      const labelHeight = 22; // label text-[10px] + mt-0.5 margin
       const rows = 4;
       const totalGaps = (rows - 1) * gapSize;
-      // Use all available height minus gaps and labels
-      const perRow = Math.max(60, Math.floor((available - totalGaps - labelHeight * rows) / rows));
+      const perRow = Math.max(60, Math.min(200, Math.floor((available - totalGaps) / rows) - labelHeight));
       setArtistItemSize(perRow);
     };
-    // Delay to let DOM settle
-    const t = setTimeout(calcSize, 50);
+    calcSize();
     const ro = new ResizeObserver(calcSize);
     if (artistContainerRef.current) ro.observe(artistContainerRef.current);
-    return () => { clearTimeout(t); ro.disconnect(); };
-  }, [editing]);
+    return () => ro.disconnect();
+  }, [editing, artistsLoading]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);
@@ -314,7 +332,8 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
+        {/* Top section: name, stations, toggle - compact, no scroll */}
+        <div className="flex-shrink-0 space-y-3">
           {/* Name */}
           <div>
             <label className="text-sm font-medium mb-1 block">Mix Name</label>
@@ -348,9 +367,10 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
             </button>
             <span className="text-sm">Popular tracks only</span>
           </div>
+        </div>
 
-          {/* Artist selection grid */}
-          <div className="flex flex-col min-h-0" style={{ height: '50%' }}>
+        {/* Artist selection grid - fills ALL remaining space */}
+        <div ref={artistScrollRef} className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1 flex-shrink-0">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" /> Emphasized Artists
@@ -423,7 +443,6 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
               </div>
             )}
           </div>
-        </div>
       </div>
     );
   }
@@ -502,6 +521,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
                       cardSize={cardSize}
                       stationNames={stationNames}
                       artistThumbs={artistThumbs}
+                      stationArtMap={stationArtMap}
                     />
                   ))}
                 </div>

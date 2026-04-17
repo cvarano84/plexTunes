@@ -9,12 +9,24 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+// Media server configuration - supports Plex, Jellyfin, and Subsonic (OpenSubsonic / Navidrome).
+// Model name kept as `PlexConfig` to avoid a breaking schema migration; columns are
+// repurposed across backends:
+//   - serverType: "plex" | "jellyfin" | "subsonic"
+//   - serverUrl:  base URL in every case
+//   - token:      Plex token / Jellyfin API key / Subsonic password (kept server-side only)
+//   - username:   Subsonic username (null for Plex/Jellyfin)
+//   - libraryId:  the library section the user selected during setup (persisted so the
+//                 sync/stream routes know which scope to target)
 model PlexConfig {
-  id        String   @id @default("default")
-  serverUrl String
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default("default")
+  serverType String   @default("plex")
+  serverUrl  String
+  token      String
+  username   String?
+  libraryId  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model CachedArtist {
