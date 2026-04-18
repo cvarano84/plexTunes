@@ -642,6 +642,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentTrack?.id, currentTime, isPlaying]);
 
+  // WLED: push the current track to any enabled panels (matrix output only).
+  // Fire-and-forget - must never block playback or affect UX if panels are offline.
+  useEffect(() => {
+    if (!currentTrack?.id) return;
+    const payload = {
+      trackId: currentTrack.id,
+      title: currentTrack.title ?? '',
+      artist: currentTrack.artistName ?? '',
+      album: currentTrack.albumTitle ?? '',
+      station: currentStationName ?? '',
+    };
+    fetch('/api/wled/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }, [currentTrack?.id, currentStationName]);
+
   useEffect(() => {
     // Skip load if we just transferred from crossfade (audio already has correct src)
     if (skipLoadRef.current) {
