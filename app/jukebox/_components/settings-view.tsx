@@ -37,6 +37,8 @@ interface SettingsViewProps {
   onArtistSimilarHeightChange: (val: number) => void;
   artistTrackWidth: number;
   onArtistTrackWidthChange: (val: number) => void;
+  mixArtistIconSize: number;
+  onMixArtistIconSizeChange: (val: number) => void;
   bgStyle: string;
   onBgStyleChange: (val: any) => void;
   bgMusicReactive: boolean;
@@ -429,6 +431,7 @@ export default function SettingsView({
   artistAlbumHeight, onArtistAlbumHeightChange,
   artistSimilarHeight, onArtistSimilarHeightChange,
   artistTrackWidth, onArtistTrackWidthChange,
+  mixArtistIconSize, onMixArtistIconSizeChange,
   bgStyle, onBgStyleChange,
   bgMusicReactive, onBgMusicReactiveChange,
 }: SettingsViewProps) {
@@ -1131,6 +1134,15 @@ export default function SettingsView({
             <div className="flex items-center gap-3">
               <input type="range" min="2" max="30" step="1" value={stationQueueSize} onChange={(e) => onStationQueueSizeChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
               <span className="text-sm font-mono w-10 text-right">{stationQueueSize}</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+            <label className="text-sm font-medium">Mix Editor Artist Icon Size</label>
+            <p className="text-xs text-muted-foreground mb-2">Diameter (in pixels) of the round artist thumbnails in the Mix editor</p>
+            <div className="flex items-center gap-3">
+              <input type="range" min="50" max="240" step="2" value={mixArtistIconSize} onChange={(e) => onMixArtistIconSizeChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+              <span className="text-sm font-mono w-16 text-right">{mixArtistIconSize}px</span>
             </div>
           </div>
 

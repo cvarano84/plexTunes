@@ -12,6 +12,7 @@ interface MixesViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   stationQueueSize?: number;
   stationRows?: number;
+  mixArtistIconSize?: number;
 }
 
 /* ── Mix Card (matches station card styling) ── */
@@ -99,7 +100,7 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNa
 }
 
 /* ── Main Component ── */
-export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3 }: MixesViewProps) {
+export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3, mixArtistIconSize = 100 }: MixesViewProps) {
   const [mixes, setMixes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingMix, setPlayingMix] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const artistScrollRef = useRef<HTMLDivElement>(null);
   const artistContainerRef = useRef<HTMLDivElement>(null);
   const [cardSize, setCardSize] = useState(200);
-  const [artistItemSize, setArtistItemSize] = useState(80);
+  const [artistItemSize, setArtistItemSize] = useState(mixArtistIconSize);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -191,30 +192,11 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor — mirror artists-view pattern exactly:
-  // measure the SCROLL CONTAINER (not the section wrapper) so chips/search don't contaminate the measurement.
-  // Safe to use ResizeObserver because the scroll container has `overflow-y-hidden`, so icon growth cannot
-  // cause the container's height to change — no feedback loop possible.
+  // Artist grid sizing for editor — uses the user's manual setting (Settings → Mix Editor Artist Icon Size)
+  // for predictable, zero-drift sizing. Auto-scaling proved unreliable in practice.
   useEffect(() => {
-    if (editing === null) return;
-    if (artistsLoading) return; // wait until grid is actually in DOM
-    const calcSize = () => {
-      const container = artistContainerRef.current;
-      if (!container) return;
-      const available = container.clientHeight;
-      if (available < 50) return;
-      const gapSize = 8;
-      const labelHeight = 22; // label text-[10px] + mt-0.5 margin
-      const rows = 4;
-      const totalGaps = (rows - 1) * gapSize;
-      const perRow = Math.max(60, Math.min(200, Math.floor((available - totalGaps) / rows) - labelHeight));
-      setArtistItemSize(perRow);
-    };
-    calcSize();
-    const ro = new ResizeObserver(calcSize);
-    if (artistContainerRef.current) ro.observe(artistContainerRef.current);
-    return () => ro.disconnect();
-  }, [editing, artistsLoading]);
+    setArtistItemSize(Math.max(40, Math.min(400, mixArtistIconSize)));
+  }, [mixArtistIconSize]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);
