@@ -176,3 +176,39 @@ model Mix {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// WLED panel / instance. Each entry represents one WLED controller on the LAN
+// (e.g. a GL-C-010WL with two outputs).  For V1 we model the two outputs as a
+// fixed "matrix" (scrolling now-playing text) and "perimeter" (ambient / audio
+// reactive) slot - each mapping to a WLED segment id.
+model WledInstance {
+  id               String   @id @default(cuid())
+  name             String
+  host             String   // IP or hostname (no protocol / port)
+  enabled          Boolean  @default(true)
+  brightnessCap    Int      @default(200)
+
+  // Output 1 - matrix (now-playing scrolling text)
+  matrixEnabled    Boolean  @default(true)
+  matrixSegmentId  Int      @default(0)
+  matrixTextFormat String   @default("{title}")
+  matrixColorMode  String   @default("fixed")      // "fixed" | "random"
+  matrixColor      String   @default("#a855f7")    // hex, used when colorMode=fixed
+  matrixEffectId   Int      @default(165)          // WLED "Scrolling Text" by default
+  matrixSpeed      Int      @default(128)
+  matrixIntensity  Int      @default(128)
+
+  // Output 2 - perimeter
+  perimeterEnabled    Boolean @default(true)
+  perimeterSegmentId  Int     @default(1)
+  perimeterEffectId   Int     @default(0)          // Solid
+  perimeterColor      String  @default("#a855f7")
+  perimeterPaletteId  Int     @default(0)
+  perimeterSpeed      Int     @default(128)
+  perimeterIntensity  Int     @default(128)
+
+  lastSeenAt      DateTime?
+  lastError       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

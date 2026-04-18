@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Settings, CheckCircle2, XCircle, Loader2, AlertCircle, Database, RefreshCw, Music2, Gauge, Radio, Plus, Trash2, ChevronUp, ChevronDown, BarChart3, Zap, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
+import WledPanelsSection from './wled-panels-section';
 
 interface SettingsViewProps {
   idleTimeout: number;
@@ -1456,6 +1457,9 @@ export default function SettingsView({
 
       {/* Metadata Dashboard */}
       <MetadataDashboard />
+
+      {/* WLED Panels */}
+      <WledPanelsSection />
 
       {/* Media Server Config */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
