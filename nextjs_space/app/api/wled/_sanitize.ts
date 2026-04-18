@@ -3,10 +3,13 @@ import { isValidHex, normalizeHost } from '@/lib/wled';
 /** Fields a client is allowed to submit on create/update. */
 const EDITABLE_FIELDS = [
   'name', 'host', 'enabled', 'brightnessCap',
-  'matrixEnabled', 'matrixSegmentId', 'matrixTextFormat', 'matrixColorMode',
-  'matrixColor', 'matrixEffectId', 'matrixSpeed', 'matrixIntensity',
-  'perimeterEnabled', 'perimeterSegmentId', 'perimeterEffectId', 'perimeterColor',
-  'perimeterPaletteId', 'perimeterSpeed', 'perimeterIntensity',
+  'matrixEnabled', 'matrixSegmentId', 'matrixOutputType',
+  'matrixTextFormat', 'matrixColorMode', 'matrixColor',
+  'matrixEffectId', 'matrixPaletteId', 'matrixSpeed', 'matrixIntensity',
+  'perimeterEnabled', 'perimeterSegmentId', 'perimeterOutputType',
+  'perimeterTextFormat', 'perimeterColorMode',
+  'perimeterEffectId', 'perimeterColor', 'perimeterPaletteId',
+  'perimeterSpeed', 'perimeterIntensity',
 ] as const;
 
 export function sanitizeBody(body: Record<string, any>): Record<string, any> {
@@ -19,6 +22,9 @@ export function sanitizeBody(body: Record<string, any>): Record<string, any> {
   if (out.matrixColor !== undefined && !isValidHex(out.matrixColor)) delete out.matrixColor;
   if (out.perimeterColor !== undefined && !isValidHex(out.perimeterColor)) delete out.perimeterColor;
   if (out.matrixColorMode !== undefined && !['fixed', 'random'].includes(out.matrixColorMode)) delete out.matrixColorMode;
+  if (out.perimeterColorMode !== undefined && !['fixed', 'random'].includes(out.perimeterColorMode)) delete out.perimeterColorMode;
+  if (out.matrixOutputType !== undefined && !['matrix', 'strip'].includes(out.matrixOutputType)) delete out.matrixOutputType;
+  if (out.perimeterOutputType !== undefined && !['matrix', 'strip'].includes(out.perimeterOutputType)) delete out.perimeterOutputType;
   const clampInt = (v: any, lo: number, hi: number) => {
     const n = parseInt(v, 10);
     if (isNaN(n)) return undefined;
@@ -27,6 +33,7 @@ export function sanitizeBody(body: Record<string, any>): Record<string, any> {
   const intFields: Array<[string, number, number]> = [
     ['brightnessCap', 0, 255],
     ['matrixSegmentId', 0, 15], ['matrixEffectId', 0, 255],
+    ['matrixPaletteId', 0, 71],
     ['matrixSpeed', 0, 255], ['matrixIntensity', 0, 255],
     ['perimeterSegmentId', 0, 15], ['perimeterEffectId', 0, 255],
     ['perimeterPaletteId', 0, 71], ['perimeterSpeed', 0, 255], ['perimeterIntensity', 0, 255],

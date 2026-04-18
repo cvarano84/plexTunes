@@ -16,15 +16,20 @@ type Instance = {
 
   matrixEnabled: boolean;
   matrixSegmentId: number;
+  matrixOutputType: 'matrix' | 'strip' | string;
   matrixTextFormat: string;
   matrixColorMode: 'fixed' | 'random' | string;
   matrixColor: string;
   matrixEffectId: number;
+  matrixPaletteId: number;
   matrixSpeed: number;
   matrixIntensity: number;
 
   perimeterEnabled: boolean;
   perimeterSegmentId: number;
+  perimeterOutputType: 'matrix' | 'strip' | string;
+  perimeterTextFormat: string;
+  perimeterColorMode: 'fixed' | 'random' | string;
   perimeterEffectId: number;
   perimeterColor: string;
   perimeterPaletteId: number;
@@ -57,14 +62,19 @@ const DEFAULT_NEW: Partial<Instance> = {
   brightnessCap: 200,
   matrixEnabled: true,
   matrixSegmentId: 0,
+  matrixOutputType: 'matrix',
   matrixTextFormat: '{title}',
   matrixColorMode: 'fixed',
   matrixColor: '#22c55e',
   matrixEffectId: 165,
+  matrixPaletteId: 0,
   matrixSpeed: 128,
   matrixIntensity: 128,
   perimeterEnabled: true,
   perimeterSegmentId: 1,
+  perimeterOutputType: 'strip',
+  perimeterTextFormat: '{title}',
+  perimeterColorMode: 'fixed',
   perimeterEffectId: 9,
   perimeterColor: '#06b6d4',
   perimeterPaletteId: 0,
@@ -324,7 +334,10 @@ export default function WledPanelsSection() {
             const isOpen = !!expanded[raw.id];
             const effectsList = probeInfo?.effects ?? [];
             const palettesList = probeInfo?.palettes ?? [];
-            const needs2D = inst.matrixEnabled && probeInfo && probeInfo.online && !probeInfo.is2d;
+            const anyMatrixMode =
+              (inst.matrixEnabled && inst.matrixOutputType === 'matrix') ||
+              (inst.perimeterEnabled && inst.perimeterOutputType === 'matrix');
+            const needs2D = anyMatrixMode && probeInfo && probeInfo.online && !probeInfo.is2d;
 
             return (
               <div key={raw.id} className="rounded-lg bg-secondary/40 border border-border/20 overflow-hidden">
@@ -402,216 +415,63 @@ export default function WledPanelsSection() {
                       <span className="text-xs font-mono w-10 text-right">{inst.brightnessCap}</span>
                     </div>
 
-                    {/* Matrix output (scrolling text) */}
-                    <div className="rounded-lg bg-background/40 border border-border/20 p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <h5 className="text-sm font-semibold">Output 1 - Matrix (scrolling song title)</h5>
-                        <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={inst.matrixEnabled}
-                            onChange={(e) => updateDraft(raw.id, { matrixEnabled: e.target.checked })}
-                            className="accent-primary"
-                          />
-                          <span className="text-muted-foreground">Enabled</span>
-                        </label>
-                      </div>
+                    {/* Output 1 */}
+                    <OutputCard
+                      title="Output 1"
+                      outputType={inst.matrixOutputType}
+                      enabled={inst.matrixEnabled}
+                      segmentId={inst.matrixSegmentId}
+                      textFormat={inst.matrixTextFormat}
+                      colorMode={inst.matrixColorMode}
+                      color={inst.matrixColor}
+                      effectId={inst.matrixEffectId}
+                      paletteId={inst.matrixPaletteId}
+                      speed={inst.matrixSpeed}
+                      intensity={inst.matrixIntensity}
+                      effectsList={effectsList}
+                      palettesList={palettesList}
+                      onChange={(patch) => updateDraft(raw.id, {
+                        ...(patch.outputType !== undefined ? { matrixOutputType: patch.outputType } : {}),
+                        ...(patch.enabled !== undefined ? { matrixEnabled: patch.enabled } : {}),
+                        ...(patch.segmentId !== undefined ? { matrixSegmentId: patch.segmentId } : {}),
+                        ...(patch.textFormat !== undefined ? { matrixTextFormat: patch.textFormat } : {}),
+                        ...(patch.colorMode !== undefined ? { matrixColorMode: patch.colorMode } : {}),
+                        ...(patch.color !== undefined ? { matrixColor: patch.color } : {}),
+                        ...(patch.effectId !== undefined ? { matrixEffectId: patch.effectId } : {}),
+                        ...(patch.paletteId !== undefined ? { matrixPaletteId: patch.paletteId } : {}),
+                        ...(patch.speed !== undefined ? { matrixSpeed: patch.speed } : {}),
+                        ...(patch.intensity !== undefined ? { matrixIntensity: patch.intensity } : {}),
+                      })}
+                    />
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Segment ID</span>
-                          <input
-                            type="number" min={0} max={15}
-                            value={inst.matrixSegmentId}
-                            onChange={(e) => updateDraft(raw.id, { matrixSegmentId: parseInt(e.target.value) || 0 })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          />
-                        </label>
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Effect</span>
-                          <select
-                            value={inst.matrixEffectId}
-                            onChange={(e) => updateDraft(raw.id, { matrixEffectId: parseInt(e.target.value) })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          >
-                            {effectsList.length > 0 ? effectsList.map((name, i) => (
-                              <option key={i} value={i}>{i}: {name}</option>
-                            )) : (
-                              <option value={165}>165: Scrolling Text</option>
-                            )}
-                          </select>
-                        </label>
-                      </div>
-
-                      <label className="flex flex-col text-xs mt-2">
-                        <span className="text-muted-foreground mb-1">
-                          Text template <span className="opacity-70">(tokens: {`{title}`} {`{artist}`} {`{album}`} {`{station}`})</span>
-                        </span>
-                        <input
-                          type="text"
-                          value={inst.matrixTextFormat}
-                          onChange={(e) => updateDraft(raw.id, { matrixTextFormat: e.target.value })}
-                          className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono"
-                        />
-                      </label>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Colour mode</span>
-                          <select
-                            value={inst.matrixColorMode}
-                            onChange={(e) => updateDraft(raw.id, { matrixColorMode: e.target.value })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          >
-                            <option value="fixed">Fixed colour</option>
-                            <option value="random">Random each song</option>
-                          </select>
-                        </label>
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Colour</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={inst.matrixColor}
-                              onChange={(e) => updateDraft(raw.id, { matrixColor: e.target.value })}
-                              disabled={inst.matrixColorMode === 'random'}
-                              className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer disabled:opacity-40"
-                            />
-                            <input
-                              type="text"
-                              value={inst.matrixColor}
-                              onChange={(e) => updateDraft(raw.id, { matrixColor: e.target.value })}
-                              disabled={inst.matrixColorMode === 'random'}
-                              className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono disabled:opacity-40"
-                            />
-                          </div>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground w-16">Speed</label>
-                          <input
-                            type="range" min={0} max={255}
-                            value={inst.matrixSpeed}
-                            onChange={(e) => updateDraft(raw.id, { matrixSpeed: parseInt(e.target.value) })}
-                            className="flex-1 accent-primary h-2"
-                          />
-                          <span className="text-xs font-mono w-8 text-right">{inst.matrixSpeed}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground w-16">Intensity</label>
-                          <input
-                            type="range" min={0} max={255}
-                            value={inst.matrixIntensity}
-                            onChange={(e) => updateDraft(raw.id, { matrixIntensity: parseInt(e.target.value) })}
-                            className="flex-1 accent-primary h-2"
-                          />
-                          <span className="text-xs font-mono w-8 text-right">{inst.matrixIntensity}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Perimeter output (ambient / audio-reactive) */}
-                    <div className="rounded-lg bg-background/40 border border-border/20 p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <h5 className="text-sm font-semibold">Output 2 - Perimeter (ambient)</h5>
-                        <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={inst.perimeterEnabled}
-                            onChange={(e) => updateDraft(raw.id, { perimeterEnabled: e.target.checked })}
-                            className="accent-primary"
-                          />
-                          <span className="text-muted-foreground">Enabled</span>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Segment ID</span>
-                          <input
-                            type="number" min={0} max={15}
-                            value={inst.perimeterSegmentId}
-                            onChange={(e) => updateDraft(raw.id, { perimeterSegmentId: parseInt(e.target.value) || 0 })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          />
-                        </label>
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">
-                            Effect <span className="opacity-60">(&quot;AR&quot; effects use the built-in mic)</span>
-                          </span>
-                          <select
-                            value={inst.perimeterEffectId}
-                            onChange={(e) => updateDraft(raw.id, { perimeterEffectId: parseInt(e.target.value) })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          >
-                            {effectsList.length > 0 ? effectsList.map((name, i) => (
-                              <option key={i} value={i}>{i}: {name}</option>
-                            )) : AUDIO_REACTIVE_HINTS.map(o => (
-                              <option key={o.id} value={o.id}>{o.id}: {o.label}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Palette</span>
-                          <select
-                            value={inst.perimeterPaletteId}
-                            onChange={(e) => updateDraft(raw.id, { perimeterPaletteId: parseInt(e.target.value) })}
-                            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
-                          >
-                            {palettesList.length > 0 ? palettesList.map((name, i) => (
-                              <option key={i} value={i}>{i}: {name}</option>
-                            )) : (
-                              <option value={0}>0: Default</option>
-                            )}
-                          </select>
-                        </label>
-                        <label className="flex flex-col text-xs">
-                          <span className="text-muted-foreground mb-1">Accent colour</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={inst.perimeterColor}
-                              onChange={(e) => updateDraft(raw.id, { perimeterColor: e.target.value })}
-                              className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer"
-                            />
-                            <input
-                              type="text"
-                              value={inst.perimeterColor}
-                              onChange={(e) => updateDraft(raw.id, { perimeterColor: e.target.value })}
-                              className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono"
-                            />
-                          </div>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground w-16">Speed</label>
-                          <input
-                            type="range" min={0} max={255}
-                            value={inst.perimeterSpeed}
-                            onChange={(e) => updateDraft(raw.id, { perimeterSpeed: parseInt(e.target.value) })}
-                            className="flex-1 accent-primary h-2"
-                          />
-                          <span className="text-xs font-mono w-8 text-right">{inst.perimeterSpeed}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground w-16">Intensity</label>
-                          <input
-                            type="range" min={0} max={255}
-                            value={inst.perimeterIntensity}
-                            onChange={(e) => updateDraft(raw.id, { perimeterIntensity: parseInt(e.target.value) })}
-                            className="flex-1 accent-primary h-2"
-                          />
-                          <span className="text-xs font-mono w-8 text-right">{inst.perimeterIntensity}</span>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Output 2 */}
+                    <OutputCard
+                      title="Output 2"
+                      outputType={inst.perimeterOutputType}
+                      enabled={inst.perimeterEnabled}
+                      segmentId={inst.perimeterSegmentId}
+                      textFormat={inst.perimeterTextFormat}
+                      colorMode={inst.perimeterColorMode}
+                      color={inst.perimeterColor}
+                      effectId={inst.perimeterEffectId}
+                      paletteId={inst.perimeterPaletteId}
+                      speed={inst.perimeterSpeed}
+                      intensity={inst.perimeterIntensity}
+                      effectsList={effectsList}
+                      palettesList={palettesList}
+                      onChange={(patch) => updateDraft(raw.id, {
+                        ...(patch.outputType !== undefined ? { perimeterOutputType: patch.outputType } : {}),
+                        ...(patch.enabled !== undefined ? { perimeterEnabled: patch.enabled } : {}),
+                        ...(patch.segmentId !== undefined ? { perimeterSegmentId: patch.segmentId } : {}),
+                        ...(patch.textFormat !== undefined ? { perimeterTextFormat: patch.textFormat } : {}),
+                        ...(patch.colorMode !== undefined ? { perimeterColorMode: patch.colorMode } : {}),
+                        ...(patch.color !== undefined ? { perimeterColor: patch.color } : {}),
+                        ...(patch.effectId !== undefined ? { perimeterEffectId: patch.effectId } : {}),
+                        ...(patch.paletteId !== undefined ? { perimeterPaletteId: patch.paletteId } : {}),
+                        ...(patch.speed !== undefined ? { perimeterSpeed: patch.speed } : {}),
+                        ...(patch.intensity !== undefined ? { perimeterIntensity: patch.intensity } : {}),
+                      })}
+                    />
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -653,5 +513,209 @@ export default function WledPanelsSection() {
         </div>
       )}
     </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OutputCard: one configurable WLED output. Each instance has two of these.
+// ---------------------------------------------------------------------------
+
+type OutputCardProps = {
+  title: string;
+  outputType: string;
+  enabled: boolean;
+  segmentId: number;
+  textFormat: string;
+  colorMode: string;
+  color: string;
+  effectId: number;
+  paletteId: number;
+  speed: number;
+  intensity: number;
+  effectsList: string[];
+  palettesList: string[];
+  onChange: (patch: Partial<{
+    outputType: string;
+    enabled: boolean;
+    segmentId: number;
+    textFormat: string;
+    colorMode: string;
+    color: string;
+    effectId: number;
+    paletteId: number;
+    speed: number;
+    intensity: number;
+  }>) => void;
+};
+
+function OutputCard(props: OutputCardProps) {
+  const isMatrix = props.outputType === 'matrix';
+  const typeLabel = isMatrix ? '2D Text Matrix' : 'LED Strip';
+
+  return (
+    <div className="rounded-lg bg-background/40 border border-border/20 p-3">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h5 className="text-sm font-semibold">
+          {props.title}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">({typeLabel})</span>
+        </h5>
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={props.enabled}
+            onChange={(e) => props.onChange({ enabled: e.target.checked })}
+            className="accent-primary"
+          />
+          <span className="text-muted-foreground">Enabled</span>
+        </label>
+      </div>
+
+      {/* Type selector */}
+      <label className="flex flex-col text-xs mb-2">
+        <span className="text-muted-foreground mb-1">Output type</span>
+        <select
+          value={props.outputType}
+          onChange={(e) => props.onChange({ outputType: e.target.value })}
+          className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
+        >
+          <option value="matrix">2D Text Matrix (scrolls song title)</option>
+          <option value="strip">LED Strip (ambient / audio-reactive)</option>
+        </select>
+      </label>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className="flex flex-col text-xs">
+          <span className="text-muted-foreground mb-1">Segment ID</span>
+          <input
+            type="number" min={0} max={15}
+            value={props.segmentId}
+            onChange={(e) => props.onChange({ segmentId: parseInt(e.target.value) || 0 })}
+            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
+          />
+        </label>
+        <label className="flex flex-col text-xs">
+          <span className="text-muted-foreground mb-1">
+            Effect{!isMatrix && <span className="opacity-60"> (&quot;AR&quot; effects use the built-in mic)</span>}
+          </span>
+          <select
+            value={props.effectId}
+            onChange={(e) => props.onChange({ effectId: parseInt(e.target.value) })}
+            className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
+          >
+            {props.effectsList.length > 0
+              ? props.effectsList.map((name, i) => <option key={i} value={i}>{i}: {name}</option>)
+              : isMatrix
+                ? <option value={165}>165: Scrolling Text</option>
+                : AUDIO_REACTIVE_HINTS.map(o => <option key={o.id} value={o.id}>{o.id}: {o.label}</option>)
+            }
+          </select>
+        </label>
+      </div>
+
+      {isMatrix ? (
+        <>
+          <label className="flex flex-col text-xs mt-2">
+            <span className="text-muted-foreground mb-1">
+              Text template <span className="opacity-70">(tokens: {`{title}`} {`{artist}`} {`{album}`} {`{station}`})</span>
+            </span>
+            <input
+              type="text"
+              value={props.textFormat}
+              onChange={(e) => props.onChange({ textFormat: e.target.value })}
+              className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono"
+            />
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <label className="flex flex-col text-xs">
+              <span className="text-muted-foreground mb-1">Colour mode</span>
+              <select
+                value={props.colorMode}
+                onChange={(e) => props.onChange({ colorMode: e.target.value })}
+                className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
+              >
+                <option value="fixed">Fixed colour</option>
+                <option value="random">Random each song</option>
+              </select>
+            </label>
+            <label className="flex flex-col text-xs">
+              <span className="text-muted-foreground mb-1">Colour</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={props.color}
+                  onChange={(e) => props.onChange({ color: e.target.value })}
+                  disabled={props.colorMode === 'random'}
+                  className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer disabled:opacity-40"
+                />
+                <input
+                  type="text"
+                  value={props.color}
+                  onChange={(e) => props.onChange({ color: e.target.value })}
+                  disabled={props.colorMode === 'random'}
+                  className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono disabled:opacity-40"
+                />
+              </div>
+            </label>
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <label className="flex flex-col text-xs">
+            <span className="text-muted-foreground mb-1">Palette</span>
+            <select
+              value={props.paletteId}
+              onChange={(e) => props.onChange({ paletteId: parseInt(e.target.value) })}
+              className="px-2 py-1 rounded-lg bg-background border border-border/50 text-sm"
+            >
+              {props.palettesList.length > 0
+                ? props.palettesList.map((name, i) => <option key={i} value={i}>{i}: {name}</option>)
+                : <option value={0}>0: Default</option>
+              }
+            </select>
+          </label>
+          <label className="flex flex-col text-xs">
+            <span className="text-muted-foreground mb-1">Accent colour</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={props.color}
+                onChange={(e) => props.onChange({ color: e.target.value })}
+                className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer"
+              />
+              <input
+                type="text"
+                value={props.color}
+                onChange={(e) => props.onChange({ color: e.target.value })}
+                className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono"
+              />
+            </div>
+          </label>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground w-16">Speed</label>
+          <input
+            type="range" min={0} max={255}
+            value={props.speed}
+            onChange={(e) => props.onChange({ speed: parseInt(e.target.value) })}
+            className="flex-1 accent-primary h-2"
+          />
+          <span className="text-xs font-mono w-8 text-right">{props.speed}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground w-16">Intensity</label>
+          <input
+            type="range" min={0} max={255}
+            value={props.intensity}
+            onChange={(e) => props.onChange({ intensity: parseInt(e.target.value) })}
+            className="flex-1 accent-primary h-2"
+          />
+          <span className="text-xs font-mono w-8 text-right">{props.intensity}</span>
+        </div>
+      </div>
+    </div>
   );
 }

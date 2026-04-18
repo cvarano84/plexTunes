@@ -1464,21 +1464,164 @@ export default function SettingsView({
       {/* Media Server Config */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <h3 className="text-lg font-display font-semibold mb-3">Media Server Configuration</h3>
-        <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-          <p className="text-sm text-muted-foreground mb-3">
-            Currently connected to <strong>{
-              diagnostics?.plex?.serverType === 'jellyfin'
-                ? 'Jellyfin'
-                : diagnostics?.plex?.serverType === 'subsonic'
-                ? 'Navidrome / Subsonic'
-                : 'Plex'
-            }</strong>. Switch backends or re-sync your library from the setup wizard.
-          </p>
-          <button onClick={() => { window.location.href = '/setup'; }} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-            Open Setup Wizard
-          </button>
-        </div>
+        <MediaServerCredentialsPanel
+          serverType={diagnostics?.plex?.serverType}
+          serverUrl={diagnostics?.plex?.serverUrl}
+        />
       </motion.div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MediaServerCredentialsPanel: inline token / URL updater that preserves
+// libraryId and all cached artist / album / track metadata. Uses the PATCH
+// endpoint on /api/plex/config instead of POST so we don't wipe the library
+// selection when the user just needs to refresh a stale token.
+// ---------------------------------------------------------------------------
+
+function MediaServerCredentialsPanel(props: { serverType?: string; serverUrl?: string }) {
+  const serverType = props.serverType ?? 'plex';
+  const serverLabel =
+    serverType === 'jellyfin' ? 'Jellyfin' :
+    serverType === 'subsonic' ? 'Navidrome / Subsonic' : 'Plex';
+  const needsUsername = serverType === 'subsonic';
+
+  const [showEdit, setShowEdit] = React.useState(false);
+  const [serverUrl, setServerUrl] = React.useState(props.serverUrl ?? '');
+  const [token, setToken] = React.useState('');
+  const [username, setUsername] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [status, setStatus] = React.useState<{ kind: 'idle' | 'ok' | 'error'; message?: string }>({ kind: 'idle' });
+
+  React.useEffect(() => {
+    if (props.serverUrl && !serverUrl) setServerUrl(props.serverUrl);
+  }, [props.serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    if (!token.trim() && serverUrl === (props.serverUrl ?? '')) {
+      setStatus({ kind: 'error', message: 'Enter a new token or a new server URL.' });
+      return;
+    }
+    setSaving(true);
+    setStatus({ kind: 'idle' });
+    try {
+      const body: Record<string, any> = {};
+      if (serverUrl.trim() && serverUrl.trim() !== (props.serverUrl ?? '')) body.serverUrl = serverUrl.trim();
+      if (token.trim()) body.token = token.trim();
+      if (needsUsername && username.trim()) body.username = username.trim();
+
+      const res = await fetch('/api/plex/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus({ kind: 'error', message: data?.error ?? 'Failed to update credentials' });
+      } else {
+        setStatus({
+          kind: 'ok',
+          message: 'Credentials updated. Your library and cached metadata are preserved.',
+        });
+        setToken('');
+        setUsername('');
+      }
+    } catch (e: any) {
+      setStatus({ kind: 'error', message: e?.message ?? 'Network error' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div>
+          <p className="text-sm">
+            Connected to <strong>{serverLabel}</strong>
+            {props.serverUrl && <span className="text-muted-foreground"> at {props.serverUrl}</span>}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            If your token expired or the server URL changed, update below - your library and cached metadata stay intact.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowEdit(s => !s)}
+          className="px-3 py-1.5 text-xs rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+        >
+          {showEdit ? 'Cancel' : 'Update credentials'}
+        </button>
+      </div>
+
+      {showEdit && (
+        <div className="mt-3 space-y-2 border-t border-border/20 pt-3">
+          <label className="flex flex-col text-xs">
+            <span className="text-muted-foreground mb-1">Server URL</span>
+            <input
+              type="text"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder={props.serverUrl || 'http://192.168.1.100:32400'}
+              className="px-3 py-2 rounded-lg bg-background border border-border/50 text-sm font-mono"
+            />
+          </label>
+
+          {needsUsername && (
+            <label className="flex flex-col text-xs">
+              <span className="text-muted-foreground mb-1">Username</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="leave blank to keep current"
+                className="px-3 py-2 rounded-lg bg-background border border-border/50 text-sm"
+              />
+            </label>
+          )}
+
+          <label className="flex flex-col text-xs">
+            <span className="text-muted-foreground mb-1">
+              {serverType === 'subsonic' ? 'Password' : 'Token'}
+            </span>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={serverType === 'subsonic' ? 'Enter new password' : 'Enter new token'}
+              className="px-3 py-2 rounded-lg bg-background border border-border/50 text-sm font-mono"
+            />
+          </label>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Testing & saving...' : 'Save & test connection'}
+            </button>
+            {status.kind === 'ok' && (
+              <span className="text-xs text-green-400">{status.message}</span>
+            )}
+            {status.kind === 'error' && (
+              <span className="text-xs text-red-400">{status.message}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 pt-3 border-t border-border/20 flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-muted-foreground">
+          Need to switch backends, or pick a different library? Re-run the setup wizard (this will reset library selection).
+        </p>
+        <button
+          onClick={() => { window.location.href = '/setup'; }}
+          className="px-3 py-1.5 text-xs rounded-lg bg-background border border-border/50 hover:bg-secondary/60 transition-colors"
+        >
+          Open Setup Wizard
+        </button>
+      </div>
     </div>
   );
 }

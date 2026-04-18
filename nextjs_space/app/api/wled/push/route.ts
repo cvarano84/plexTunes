@@ -11,8 +11,10 @@ import {
 
 /**
  * Fan out a track-change update to every enabled WLED instance.
- * Only the matrix output is touched here — the perimeter keeps whatever
- * ambient effect the user configured (only pushed on save/test).
+ *
+ * For each enabled output whose outputType === 'matrix', we push a scrolling
+ * text segment. Outputs configured as 'strip' keep whatever ambient effect
+ * the user picked (they only get updated on save/test, not per track).
  *
  * Body: { title?, artist?, album?, station?, trackId? }
  * Non-blocking: uses Promise.allSettled + per-unit timeouts.
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
   };
 
   const instances = await prisma.wledInstance.findMany({
-    where: { enabled: true, matrixEnabled: true },
+    where: { enabled: true },
   }).catch(() => []);
 
   if (instances.length === 0) {
@@ -39,21 +41,46 @@ export async function POST(req: NextRequest) {
   const sharedRandom = randomVibrantHex();
 
   const jobs = instances.map(async (inst) => {
-    const text = formatTrackText(inst.matrixTextFormat, tokens);
-    const color = inst.matrixColorMode === 'random' ? sharedRandom : inst.matrixColor;
-    const seg = buildMatrixSeg({
-      segmentId: inst.matrixSegmentId,
-      text,
-      effectId: inst.matrixEffectId,
-      color,
-      speed: inst.matrixSpeed,
-      intensity: inst.matrixIntensity,
-    });
+    // Build one matrix segment per output that is (a) enabled and (b) set
+    // to 'matrix' type. Outputs set to 'strip' are intentionally skipped so
+    // the user's ambient pattern keeps running.
+    const segs: any[] = [];
+
+    if (inst.matrixEnabled && inst.matrixOutputType === 'matrix') {
+      const text = formatTrackText(inst.matrixTextFormat, tokens);
+      const color = inst.matrixColorMode === 'random' ? sharedRandom : inst.matrixColor;
+      segs.push(buildMatrixSeg({
+        segmentId: inst.matrixSegmentId,
+        text,
+        effectId: inst.matrixEffectId,
+        color,
+        speed: inst.matrixSpeed,
+        intensity: inst.matrixIntensity,
+      }));
+    }
+
+    if (inst.perimeterEnabled && inst.perimeterOutputType === 'matrix') {
+      const text = formatTrackText(inst.perimeterTextFormat, tokens);
+      const color = inst.perimeterColorMode === 'random' ? sharedRandom : inst.perimeterColor;
+      segs.push(buildMatrixSeg({
+        segmentId: inst.perimeterSegmentId,
+        text,
+        effectId: inst.perimeterEffectId,
+        color,
+        speed: inst.perimeterSpeed,
+        intensity: inst.perimeterIntensity,
+      }));
+    }
+
+    if (segs.length === 0) {
+      return { id: inst.id, ok: true, skipped: true };
+    }
+
     try {
       await postState(inst.host, {
         on: true,
         bri: inst.brightnessCap,
-        seg: [seg],
+        seg: segs,
       }, 3000);
       await prisma.wledInstance.update({
         where: { id: inst.id },
