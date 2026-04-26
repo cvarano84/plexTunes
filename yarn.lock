@@ -5800,6 +5800,7 @@ __metadata:
     qrcode.react: "npm:^4.2.0"
     react: "npm:18.2.0"
     react-chartjs-2: "npm:5.3.0"
+    react-colorful: "npm:^5.6.1"
     react-datepicker: "npm:6.1.0"
     react-day-picker: "npm:8.10.1"
     react-dom: "npm:18.2.0"
@@ -11425,6 +11426,16 @@ __metadata:
     chart.js: ^4.1.1
     react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
   checksum: 10c0/4415d40217c084a49f9a936fbd30f67e0e705148e6f8359bec65601033d1076f31085c45793839fc29ec833e6c427b0bf9861a0c54c432c08d35bc9590ffa41a
+  languageName: node
+  linkType: hard
+
+"react-colorful@npm:^5.6.1":
+  version: 5.6.1
+  resolution: "react-colorful@npm:5.6.1"
+  peerDependencies:
+    react: ">=16.8.0"
+    react-dom: ">=16.8.0"
+  checksum: 10c0/48eb73cf71e10841c2a61b6b06ab81da9fffa9876134c239bfdebcf348ce2a47e56b146338e35dfb03512c85966bfc9a53844fc56bc50154e71f8daee59ff6f0
   languageName: node
   linkType: hard
 
