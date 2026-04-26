@@ -1,11 +1,20 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { HexColorPicker } from 'react-colorful';
 import {
   Lightbulb, Plus, Trash2, Loader2, XCircle,
   RefreshCw, ChevronDown, ChevronUp, Play, Save, AlertCircle,
 } from 'lucide-react';
+
+// Preset colour swatches - popular WLED colours
+const COLOR_PRESETS = [
+  '#ff0000', '#ff4500', '#ff8c00', '#ffd700', '#ffff00',
+  '#adff2f', '#00ff00', '#00fa9a', '#00ffff', '#00bfff',
+  '#0000ff', '#8a2be2', '#ff00ff', '#ff1493', '#ffffff',
+  '#ff6b35', '#f7c948', '#2ec4b6', '#e71d36', '#011627',
+];
 
 type Instance = {
   id: string;
@@ -35,6 +44,9 @@ type Instance = {
   perimeterPaletteId: number;
   perimeterSpeed: number;
   perimeterIntensity: number;
+
+  matrixPlaylist: string;     // JSON
+  perimeterPlaylist: string;  // JSON
 
   lastSeenAt?: string | null;
   lastError?: string | null;
@@ -80,7 +92,24 @@ const DEFAULT_NEW: Partial<Instance> = {
   perimeterPaletteId: 0,
   perimeterSpeed: 128,
   perimeterIntensity: 128,
+  matrixPlaylist: '[]',
+  perimeterPlaylist: '[]',
 };
+
+type PlaylistStep = {
+  effectId: number;
+  duration: number;
+  text?: string;
+  paletteId?: number;
+  color?: string;
+  speed?: number;
+  intensity?: number;
+};
+
+function parsePlaylist(json: string | null | undefined): PlaylistStep[] {
+  if (!json) return [];
+  try { const a = JSON.parse(json); return Array.isArray(a) ? a : []; } catch { return []; }
+}
 
 const AUDIO_REACTIVE_HINTS: Array<{ id: number; label: string }> = [
   // Common audio-reactive effect IDs in WLED-MM / SR builds.
@@ -428,6 +457,7 @@ export default function WledPanelsSection() {
                       paletteId={inst.matrixPaletteId}
                       speed={inst.matrixSpeed}
                       intensity={inst.matrixIntensity}
+                      playlist={parsePlaylist(inst.matrixPlaylist)}
                       effectsList={effectsList}
                       palettesList={palettesList}
                       onChange={(patch) => updateDraft(raw.id, {
@@ -441,6 +471,7 @@ export default function WledPanelsSection() {
                         ...(patch.paletteId !== undefined ? { matrixPaletteId: patch.paletteId } : {}),
                         ...(patch.speed !== undefined ? { matrixSpeed: patch.speed } : {}),
                         ...(patch.intensity !== undefined ? { matrixIntensity: patch.intensity } : {}),
+                        ...(patch.playlist !== undefined ? { matrixPlaylist: JSON.stringify(patch.playlist) } as any : {}),
                       })}
                     />
 
@@ -457,6 +488,7 @@ export default function WledPanelsSection() {
                       paletteId={inst.perimeterPaletteId}
                       speed={inst.perimeterSpeed}
                       intensity={inst.perimeterIntensity}
+                      playlist={parsePlaylist(inst.perimeterPlaylist)}
                       effectsList={effectsList}
                       palettesList={palettesList}
                       onChange={(patch) => updateDraft(raw.id, {
@@ -470,6 +502,7 @@ export default function WledPanelsSection() {
                         ...(patch.paletteId !== undefined ? { perimeterPaletteId: patch.paletteId } : {}),
                         ...(patch.speed !== undefined ? { perimeterSpeed: patch.speed } : {}),
                         ...(patch.intensity !== undefined ? { perimeterIntensity: patch.intensity } : {}),
+                        ...(patch.playlist !== undefined ? { perimeterPlaylist: JSON.stringify(patch.playlist) } as any : {}),
                       })}
                     />
 
@@ -532,6 +565,7 @@ type OutputCardProps = {
   paletteId: number;
   speed: number;
   intensity: number;
+  playlist: PlaylistStep[];
   effectsList: string[];
   palettesList: string[];
   onChange: (patch: Partial<{
@@ -545,6 +579,7 @@ type OutputCardProps = {
     paletteId: number;
     speed: number;
     intensity: number;
+    playlist: PlaylistStep[];
   }>) => void;
 };
 
@@ -638,25 +673,14 @@ function OutputCard(props: OutputCardProps) {
                 <option value="random">Random each song</option>
               </select>
             </label>
-            <label className="flex flex-col text-xs">
+            <div className="flex flex-col text-xs">
               <span className="text-muted-foreground mb-1">Colour</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={props.color}
-                  onChange={(e) => props.onChange({ color: e.target.value })}
-                  disabled={props.colorMode === 'random'}
-                  className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer disabled:opacity-40"
-                />
-                <input
-                  type="text"
-                  value={props.color}
-                  onChange={(e) => props.onChange({ color: e.target.value })}
-                  disabled={props.colorMode === 'random'}
-                  className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono disabled:opacity-40"
-                />
-              </div>
-            </label>
+              <WledColorPicker
+                color={props.color}
+                onChange={(c) => props.onChange({ color: c })}
+                disabled={props.colorMode === 'random'}
+              />
+            </div>
           </div>
         </>
       ) : (
@@ -674,26 +698,17 @@ function OutputCard(props: OutputCardProps) {
               }
             </select>
           </label>
-          <label className="flex flex-col text-xs">
+          <div className="flex flex-col text-xs">
             <span className="text-muted-foreground mb-1">Accent colour</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={props.color}
-                onChange={(e) => props.onChange({ color: e.target.value })}
-                className="w-10 h-8 rounded-lg bg-background border border-border/50 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={props.color}
-                onChange={(e) => props.onChange({ color: e.target.value })}
-                className="flex-1 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm font-mono"
-              />
-            </div>
-          </label>
+            <WledColorPicker
+              color={props.color}
+              onChange={(c) => props.onChange({ color: c })}
+            />
+          </div>
         </div>
       )}
 
+      {/* Default speed/intensity (used when no playlist, or as fallback) */}
       <div className="grid grid-cols-2 gap-2 mt-2">
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground w-16">Speed</label>
@@ -716,6 +731,305 @@ function OutputCard(props: OutputCardProps) {
           <span className="text-xs font-mono w-8 text-right">{props.intensity}</span>
         </div>
       </div>
+
+      {/* Effect Playlist */}
+      <EffectPlaylistEditor
+        steps={props.playlist}
+        effectsList={props.effectsList}
+        onChange={(steps) => props.onChange({ playlist: steps })}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WledColorPicker: click-to-expand color picker with wheel + presets
+// ---------------------------------------------------------------------------
+
+function WledColorPicker(props: { color: string; onChange: (c: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className={`relative ${props.disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 px-2 py-1 rounded-lg bg-background border border-border/50 text-sm w-full"
+      >
+        <span
+          className="w-6 h-6 rounded-md border border-border/50 shrink-0"
+          style={{ backgroundColor: props.color }}
+        />
+        <span className="font-mono text-xs">{props.color}</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-[60] mt-1 p-3 rounded-xl bg-card border border-border shadow-xl" style={{ width: 240 }}>
+          <HexColorPicker color={props.color} onChange={props.onChange} style={{ width: '100%' }} />
+
+          {/* Presets */}
+          <div className="mt-2">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Presets</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {COLOR_PRESETS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => props.onChange(c)}
+                  title={c}
+                  className={`w-5 h-5 rounded-md border transition-transform hover:scale-125 ${
+                    props.color.toLowerCase() === c.toLowerCase()
+                      ? 'border-white ring-1 ring-white scale-110'
+                      : 'border-border/40'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Manual hex input */}
+          <div className="mt-2 flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Hex:</span>
+            <input
+              type="text"
+              value={props.color}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (/^#[0-9a-fA-F]{0,6}$/.test(v)) props.onChange(v);
+              }}
+              className="flex-1 px-1.5 py-0.5 rounded bg-background border border-border/50 text-xs font-mono"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EffectPlaylistEditor: build a sequence of effects that cycle on a timer
+// ---------------------------------------------------------------------------
+
+function EffectPlaylistEditor(props: {
+  steps: PlaylistStep[];
+  effectsList: string[];
+  onChange: (steps: PlaylistStep[]) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasSteps = props.steps.length > 0;
+
+  function addStep() {
+    props.onChange([...props.steps, { effectId: 122, duration: 15, text: '{title}' }]);
+  }
+
+  function removeStep(i: number) {
+    props.onChange(props.steps.filter((_, idx) => idx !== i));
+  }
+
+  function updateStep(i: number, patch: Partial<PlaylistStep>) {
+    const next = [...props.steps];
+    next[i] = { ...next[i], ...patch };
+    props.onChange(next);
+  }
+
+  function moveStep(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= props.steps.length) return;
+    const next = [...props.steps];
+    [next[i], next[j]] = [next[j], next[i]];
+    props.onChange(next);
+  }
+
+  function toggleTextStep(i: number) {
+    const step = props.steps[i];
+    const next = [...props.steps];
+    if (step.text !== undefined) {
+      // Remove text (convert to pure effect step)
+      const { text: _t, ...rest } = step;
+      next[i] = rest;
+    } else {
+      // Add text (convert to text step)
+      next[i] = { ...step, text: '{title}' };
+    }
+    props.onChange(next);
+  }
+
+  const totalDuration = props.steps.reduce((s, p) => s + p.duration, 0);
+
+  return (
+    <div className="mt-3 rounded-lg border border-border/20 bg-background/20 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-secondary/30 transition-colors"
+      >
+        <span className="font-semibold">
+          Effect Playlist
+          {hasSteps && (
+            <span className="ml-2 font-normal text-muted-foreground">
+              ({props.steps.length} step{props.steps.length !== 1 ? 's' : ''}, {totalDuration}s cycle)
+            </span>
+          )}
+        </span>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 space-y-2">
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Add steps that cycle automatically. Each step can be a scrolling text effect (set text to display)
+            or a pure visual effect. Steps rotate on a timer while music plays. Leave empty to use the single-effect
+            settings above.
+          </p>
+
+          {props.steps.map((step, i) => {
+            const isText = step.text !== undefined;
+            return (
+              <div key={i} className="rounded-lg bg-secondary/30 border border-border/20 p-2 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono text-muted-foreground w-5">{i + 1}.</span>
+
+                  {/* Effect selector */}
+                  <select
+                    value={step.effectId}
+                    onChange={(e) => updateStep(i, { effectId: parseInt(e.target.value) })}
+                    className="flex-1 px-1.5 py-0.5 rounded bg-background border border-border/50 text-xs"
+                  >
+                    {props.effectsList.length > 0
+                      ? props.effectsList.map((name, idx) => (
+                          <option key={idx} value={idx}>{idx}: {name}</option>
+                        ))
+                      : <>
+                          <option value={122}>122: Scrolling Text</option>
+                          <option value={165}>165: Scrolling Text (alt)</option>
+                          {AUDIO_REACTIVE_HINTS.map(o => (
+                            <option key={o.id} value={o.id}>{o.id}: {o.label}</option>
+                          ))}
+                        </>
+                    }
+                  </select>
+
+                  {/* Duration */}
+                  <div className="flex items-center gap-0.5">
+                    <input
+                      type="number"
+                      min={1} max={600}
+                      value={step.duration}
+                      onChange={(e) => updateStep(i, { duration: Math.max(1, parseInt(e.target.value) || 10) })}
+                      className="w-12 px-1 py-0.5 rounded bg-background border border-border/50 text-xs text-center"
+                    />
+                    <span className="text-[10px] text-muted-foreground">s</span>
+                  </div>
+
+                  {/* Reorder + delete */}
+                  <button type="button" onClick={() => moveStep(i, -1)} disabled={i === 0}
+                    className="p-0.5 rounded hover:bg-secondary disabled:opacity-30" title="Move up">
+                    <ChevronUp className="w-3 h-3" />
+                  </button>
+                  <button type="button" onClick={() => moveStep(i, 1)} disabled={i === props.steps.length - 1}
+                    className="p-0.5 rounded hover:bg-secondary disabled:opacity-30" title="Move down">
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  <button type="button" onClick={() => removeStep(i)}
+                    className="p-0.5 rounded hover:bg-red-500/20 text-red-400" title="Remove step">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Text toggle + text input */}
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isText}
+                      onChange={() => toggleTextStep(i)}
+                      className="accent-primary"
+                    />
+                    <span className="text-muted-foreground">Show text</span>
+                  </label>
+                  {isText && (
+                    <input
+                      type="text"
+                      value={step.text ?? ''}
+                      onChange={(e) => updateStep(i, { text: e.target.value })}
+                      placeholder="{title} - {artist}"
+                      className="flex-1 px-1.5 py-0.5 rounded bg-background border border-border/50 text-xs font-mono"
+                    />
+                  )}
+                </div>
+
+                {/* Optional per-step overrides */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">Spd:</span>
+                    <input
+                      type="number" min={0} max={255}
+                      value={step.speed ?? 128}
+                      onChange={(e) => updateStep(i, { speed: parseInt(e.target.value) || 128 })}
+                      className="w-10 px-1 py-0.5 rounded bg-background border border-border/50 text-xs text-center"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">Int:</span>
+                    <input
+                      type="number" min={0} max={255}
+                      value={step.intensity ?? 128}
+                      onChange={(e) => updateStep(i, { intensity: parseInt(e.target.value) || 128 })}
+                      className="w-10 px-1 py-0.5 rounded bg-background border border-border/50 text-xs text-center"
+                    />
+                  </div>
+                  {step.color ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">Color:</span>
+                      <input
+                        type="color"
+                        value={step.color}
+                        onChange={(e) => updateStep(i, { color: e.target.value })}
+                        className="w-5 h-5 rounded border border-border/50 cursor-pointer"
+                      />
+                      <button type="button" onClick={() => { const { color: _c, ...rest } = step; const next = [...props.steps]; next[i] = rest; props.onChange(next); }}
+                        className="text-[10px] text-red-400 hover:underline">x</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => updateStep(i, { color: '#ff0000' })}
+                      className="text-[10px] text-primary hover:underline">+ color</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={addStep}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-secondary/50 hover:bg-secondary/80 transition-colors"
+          >
+            <Plus className="w-3 h-3" /> Add step
+          </button>
+
+          {hasSteps && (
+            <button
+              type="button"
+              onClick={() => props.onChange([])}
+              className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors"
+            >
+              Clear all steps (revert to single effect)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

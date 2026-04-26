@@ -212,6 +212,15 @@ model WledInstance {
   perimeterSpeed      Int     @default(128)
   perimeterIntensity  Int     @default(128)
 
+  // Effect playlists - JSON arrays of steps that cycle on a timer.
+  // Each step: { effectId, duration (secs), text?, paletteId?, color?, speed?, intensity? }
+  // Empty array [] = single-effect mode (uses the fields above).
+  matrixPlaylist     String  @default("[]")  // JSON
+  perimeterPlaylist  String  @default("[]")  // JSON
+
+  // Timestamp of when the current playlist cycle started (reset on track change)
+  playlistCycleStart DateTime?
+
   lastSeenAt      DateTime?
   lastError       String?
   createdAt       DateTime @default(now())

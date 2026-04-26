@@ -10,6 +10,7 @@ const EDITABLE_FIELDS = [
   'perimeterTextFormat', 'perimeterColorMode',
   'perimeterEffectId', 'perimeterColor', 'perimeterPaletteId',
   'perimeterSpeed', 'perimeterIntensity',
+  'matrixPlaylist', 'perimeterPlaylist',
 ] as const;
 
 export function sanitizeBody(body: Record<string, any>): Record<string, any> {
@@ -46,6 +47,30 @@ export function sanitizeBody(body: Record<string, any>): Record<string, any> {
   }
   for (const f of ['enabled', 'matrixEnabled', 'perimeterEnabled']) {
     if (out[f] !== undefined) out[f] = !!out[f];
+  }
+  // Validate playlist JSON strings
+  for (const f of ['matrixPlaylist', 'perimeterPlaylist']) {
+    if (out[f] !== undefined) {
+      if (typeof out[f] === 'string') {
+        try {
+          const arr = JSON.parse(out[f]);
+          if (!Array.isArray(arr)) { delete out[f]; continue; }
+          // Sanitize each step
+          const clean = arr.map((s: any) => ({
+            effectId: Math.max(0, Math.min(255, parseInt(s.effectId) || 0)),
+            duration: Math.max(1, Math.min(600, parseInt(s.duration) || 10)),
+            ...(typeof s.text === 'string' ? { text: s.text } : {}),
+            ...(s.paletteId !== undefined ? { paletteId: Math.max(0, Math.min(71, parseInt(s.paletteId) || 0)) } : {}),
+            ...(typeof s.color === 'string' && isValidHex(s.color) ? { color: s.color } : {}),
+            ...(s.speed !== undefined ? { speed: Math.max(0, Math.min(255, parseInt(s.speed) || 128)) } : {}),
+            ...(s.intensity !== undefined ? { intensity: Math.max(0, Math.min(255, parseInt(s.intensity) || 128)) } : {}),
+          }));
+          out[f] = JSON.stringify(clean);
+        } catch { delete out[f]; }
+      } else {
+        delete out[f];
+      }
+    }
   }
   return out;
 }

@@ -660,6 +660,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [currentTrack?.id, currentStationName]);
 
+  // WLED: effect playlist rotation timer - calls /api/wled/rotate every 5s
+  // while a track is playing, so playlist steps cycle on schedule.
+  useEffect(() => {
+    if (!currentTrack?.id || !isPlaying) return;
+    const payload = {
+      title: currentTrack.title ?? '',
+      artist: currentTrack.artistName ?? '',
+      album: currentTrack.albumTitle ?? '',
+      station: currentStationName ?? '',
+    };
+    const iv = setInterval(() => {
+      fetch('/api/wled/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [currentTrack?.id, isPlaying, currentStationName]);
+
   useEffect(() => {
     // Skip load if we just transferred from crossfade (audio already has correct src)
     if (skipLoadRef.current) {
