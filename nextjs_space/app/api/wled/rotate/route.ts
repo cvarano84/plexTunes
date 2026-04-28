@@ -18,6 +18,10 @@ type PlaylistStep = {
   color?: string;
   speed?: number;
   intensity?: number;
+  custom1?: number;
+  custom2?: number;
+  custom3?: number;
+  option1?: boolean;
 };
 
 /**
@@ -153,6 +157,8 @@ function buildSegFromStep(
       color,
       speed,
       intensity,
+      custom1: step.custom1, custom2: step.custom2,
+      custom3: step.custom3, option1: step.option1,
     });
   }
 

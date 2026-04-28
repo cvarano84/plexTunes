@@ -62,10 +62,11 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       if (!container) return;
       const available = container.clientHeight;
       const gapSize = 12;
-      const labelHeight = 40;
+      const labelHeight = 28; // artist name + album count text
       const totalGaps = (artistRows - 1) * gapSize;
-      const perRow = Math.max(80, Math.floor((available - totalGaps) / artistRows) - labelHeight);
-      setItemSize(Math.min(200, perRow));
+      // Fill available space just like stations — no cap
+      const perRow = Math.max(80, Math.floor(((available - totalGaps) / artistRows) - labelHeight));
+      setItemSize(perRow);
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);

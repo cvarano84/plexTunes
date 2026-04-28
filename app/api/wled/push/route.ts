@@ -18,6 +18,10 @@ type PlaylistStep = {
   color?: string;
   speed?: number;
   intensity?: number;
+  custom1?: number;
+  custom2?: number;
+  custom3?: number;
+  option1?: boolean;
 };
 
 function safeParsePlaylist(json: string | null): PlaylistStep[] {
@@ -93,6 +97,10 @@ export async function POST(req: NextRequest) {
           segmentId: inst.matrixSegmentId, text,
           effectId: inst.matrixEffectId, color,
           speed: inst.matrixSpeed, intensity: inst.matrixIntensity,
+          custom1: (inst as any).matrixCustom1 ?? 128,
+          custom2: (inst as any).matrixCustom2 ?? 128,
+          custom3: (inst as any).matrixCustom3 ?? 128,
+          option1: (inst as any).matrixOption1 ?? false,
         }));
       }
       // strip without playlist = skip (keep ambient)
@@ -116,6 +124,10 @@ export async function POST(req: NextRequest) {
           segmentId: inst.perimeterSegmentId, text,
           effectId: inst.perimeterEffectId, color,
           speed: inst.perimeterSpeed, intensity: inst.perimeterIntensity,
+          custom1: (inst as any).perimeterCustom1 ?? 128,
+          custom2: (inst as any).perimeterCustom2 ?? 128,
+          custom3: (inst as any).perimeterCustom3 ?? 128,
+          option1: (inst as any).perimeterOption1 ?? false,
         }));
       }
     }
@@ -173,6 +185,8 @@ function buildStepSeg(
     return buildMatrixSeg({
       segmentId: ctx.segmentId, text,
       effectId: step.effectId, color, speed, intensity,
+      custom1: step.custom1, custom2: step.custom2,
+      custom3: step.custom3, option1: step.option1,
     });
   }
 

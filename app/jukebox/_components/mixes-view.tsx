@@ -192,11 +192,24 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows]);
 
-  // Artist grid sizing for editor — uses the user's manual setting (Settings → Mix Editor Artist Icon Size)
-  // for predictable, zero-drift sizing. Auto-scaling proved unreliable in practice.
+  // Artist grid sizing for editor — auto-fill available space (4 rows)
   useEffect(() => {
-    setArtistItemSize(Math.max(40, Math.min(400, mixArtistIconSize)));
-  }, [mixArtistIconSize]);
+    const calcArtistSize = () => {
+      const container = artistScrollRef.current;
+      if (!container) return;
+      const available = container.clientHeight;
+      const gap = 8;
+      const labelHeight = 20; // name text below icon
+      const rows = 4;
+      const totalGaps = (rows - 1) * gap;
+      const perRow = Math.max(40, Math.floor(((available - totalGaps) / rows) - labelHeight));
+      setArtistItemSize(perRow);
+    };
+    calcArtistSize();
+    const ro = new ResizeObserver(calcArtistSize);
+    if (artistScrollRef.current) ro.observe(artistScrollRef.current);
+    return () => ro.disconnect();
+  }, [editing]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);

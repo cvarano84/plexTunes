@@ -33,6 +33,10 @@ type Instance = {
   matrixPaletteId: number;
   matrixSpeed: number;
   matrixIntensity: number;
+  matrixCustom1: number;
+  matrixCustom2: number;
+  matrixCustom3: number;
+  matrixOption1: boolean;
 
   perimeterEnabled: boolean;
   perimeterSegmentId: number;
@@ -44,6 +48,10 @@ type Instance = {
   perimeterPaletteId: number;
   perimeterSpeed: number;
   perimeterIntensity: number;
+  perimeterCustom1: number;
+  perimeterCustom2: number;
+  perimeterCustom3: number;
+  perimeterOption1: boolean;
 
   matrixPlaylist: string;     // JSON
   perimeterPlaylist: string;  // JSON
@@ -82,6 +90,10 @@ const DEFAULT_NEW: Partial<Instance> = {
   matrixPaletteId: 0,
   matrixSpeed: 128,
   matrixIntensity: 128,
+  matrixCustom1: 128,
+  matrixCustom2: 128,
+  matrixCustom3: 128,
+  matrixOption1: false,
   perimeterEnabled: true,
   perimeterSegmentId: 1,
   perimeterOutputType: 'strip',
@@ -92,6 +104,10 @@ const DEFAULT_NEW: Partial<Instance> = {
   perimeterPaletteId: 0,
   perimeterSpeed: 128,
   perimeterIntensity: 128,
+  perimeterCustom1: 128,
+  perimeterCustom2: 128,
+  perimeterCustom3: 128,
+  perimeterOption1: false,
   matrixPlaylist: '[]',
   perimeterPlaylist: '[]',
 };
@@ -104,7 +120,15 @@ type PlaylistStep = {
   color?: string;
   speed?: number;
   intensity?: number;
+  custom1?: number;
+  custom2?: number;
+  custom3?: number;
+  option1?: boolean;
 };
+
+/** Effect IDs that use the scrolling text renderer and support c1/c2/c3/o1 */
+const SCROLLING_TEXT_EFFECTS = new Set([122, 165]);
+function isScrollingTextEffect(effectId: number) { return SCROLLING_TEXT_EFFECTS.has(effectId); }
 
 function parsePlaylist(json: string | null | undefined): PlaylistStep[] {
   if (!json) return [];
@@ -457,6 +481,10 @@ export default function WledPanelsSection() {
                       paletteId={inst.matrixPaletteId}
                       speed={inst.matrixSpeed}
                       intensity={inst.matrixIntensity}
+                      custom1={inst.matrixCustom1}
+                      custom2={inst.matrixCustom2}
+                      custom3={inst.matrixCustom3}
+                      option1={inst.matrixOption1}
                       playlist={parsePlaylist(inst.matrixPlaylist)}
                       effectsList={effectsList}
                       palettesList={palettesList}
@@ -471,6 +499,10 @@ export default function WledPanelsSection() {
                         ...(patch.paletteId !== undefined ? { matrixPaletteId: patch.paletteId } : {}),
                         ...(patch.speed !== undefined ? { matrixSpeed: patch.speed } : {}),
                         ...(patch.intensity !== undefined ? { matrixIntensity: patch.intensity } : {}),
+                        ...(patch.custom1 !== undefined ? { matrixCustom1: patch.custom1 } : {}),
+                        ...(patch.custom2 !== undefined ? { matrixCustom2: patch.custom2 } : {}),
+                        ...(patch.custom3 !== undefined ? { matrixCustom3: patch.custom3 } : {}),
+                        ...(patch.option1 !== undefined ? { matrixOption1: patch.option1 } : {}),
                         ...(patch.playlist !== undefined ? { matrixPlaylist: JSON.stringify(patch.playlist) } as any : {}),
                       })}
                     />
@@ -488,6 +520,10 @@ export default function WledPanelsSection() {
                       paletteId={inst.perimeterPaletteId}
                       speed={inst.perimeterSpeed}
                       intensity={inst.perimeterIntensity}
+                      custom1={inst.perimeterCustom1}
+                      custom2={inst.perimeterCustom2}
+                      custom3={inst.perimeterCustom3}
+                      option1={inst.perimeterOption1}
                       playlist={parsePlaylist(inst.perimeterPlaylist)}
                       effectsList={effectsList}
                       palettesList={palettesList}
@@ -502,6 +538,10 @@ export default function WledPanelsSection() {
                         ...(patch.paletteId !== undefined ? { perimeterPaletteId: patch.paletteId } : {}),
                         ...(patch.speed !== undefined ? { perimeterSpeed: patch.speed } : {}),
                         ...(patch.intensity !== undefined ? { perimeterIntensity: patch.intensity } : {}),
+                        ...(patch.custom1 !== undefined ? { perimeterCustom1: patch.custom1 } : {}),
+                        ...(patch.custom2 !== undefined ? { perimeterCustom2: patch.custom2 } : {}),
+                        ...(patch.custom3 !== undefined ? { perimeterCustom3: patch.custom3 } : {}),
+                        ...(patch.option1 !== undefined ? { perimeterOption1: patch.option1 } : {}),
                         ...(patch.playlist !== undefined ? { perimeterPlaylist: JSON.stringify(patch.playlist) } as any : {}),
                       })}
                     />
@@ -565,6 +605,10 @@ type OutputCardProps = {
   paletteId: number;
   speed: number;
   intensity: number;
+  custom1: number;
+  custom2: number;
+  custom3: number;
+  option1: boolean;
   playlist: PlaylistStep[];
   effectsList: string[];
   palettesList: string[];
@@ -579,6 +623,10 @@ type OutputCardProps = {
     paletteId: number;
     speed: number;
     intensity: number;
+    custom1: number;
+    custom2: number;
+    custom3: number;
+    option1: boolean;
     playlist: PlaylistStep[];
   }>) => void;
 };
@@ -708,28 +756,58 @@ function OutputCard(props: OutputCardProps) {
         </div>
       )}
 
-      {/* Default speed/intensity (used when no playlist, or as fallback) */}
-      <div className="grid grid-cols-2 gap-2 mt-2">
+      {/* Default speed/intensity + custom sliders */}
+      <div className="space-y-1.5 mt-2">
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground w-16">Speed</label>
-          <input
-            type="range" min={0} max={255}
-            value={props.speed}
+          <input type="range" min={0} max={255} value={props.speed}
             onChange={(e) => props.onChange({ speed: parseInt(e.target.value) })}
-            className="flex-1 accent-primary h-2"
-          />
+            className="flex-1 accent-primary h-2" />
           <span className="text-xs font-mono w-8 text-right">{props.speed}</span>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground w-16">Intensity</label>
-          <input
-            type="range" min={0} max={255}
-            value={props.intensity}
+          <input type="range" min={0} max={255} value={props.intensity}
             onChange={(e) => props.onChange({ intensity: parseInt(e.target.value) })}
-            className="flex-1 accent-primary h-2"
-          />
+            className="flex-1 accent-primary h-2" />
           <span className="text-xs font-mono w-8 text-right">{props.intensity}</span>
         </div>
+        {/* Extra sliders for Scrolling Text effects (122, 165) */}
+        {isMatrix && isScrollingTextEffect(props.effectId) && (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-16">Y Offset</label>
+              <input type="range" min={0} max={255} value={props.custom1}
+                onChange={(e) => props.onChange({ custom1: parseInt(e.target.value) })}
+                className="flex-1 accent-cyan-400 h-2" />
+              <span className="text-xs font-mono w-8 text-right">{props.custom1}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-16">Trail</label>
+              <input type="range" min={0} max={255} value={props.custom2}
+                onChange={(e) => props.onChange({ custom2: parseInt(e.target.value) })}
+                className="flex-1 accent-cyan-400 h-2" />
+              <span className="text-xs font-mono w-8 text-right">{props.custom2}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-16">Font Size</label>
+              <input type="range" min={0} max={255} value={props.custom3}
+                onChange={(e) => props.onChange({ custom3: parseInt(e.target.value) })}
+                className="flex-1 accent-cyan-400 h-2" />
+              <span className="text-xs font-mono w-8 text-right">{props.custom3}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-16">Rotate</label>
+              <button
+                onClick={() => props.onChange({ option1: !props.option1 })}
+                className={`w-10 h-5 rounded-full transition-colors relative ${props.option1 ? 'bg-cyan-500' : 'bg-secondary'}`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${props.option1 ? 'left-5' : 'left-0.5'}`} />
+              </button>
+              <span className="text-xs text-muted-foreground">{props.option1 ? 'On' : 'Off'}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Effect Playlist */}
@@ -948,63 +1026,87 @@ function EffectPlaylistEditor(props: {
                   </button>
                 </div>
 
-                {/* Text toggle + text input */}
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isText}
-                      onChange={() => toggleTextStep(i)}
-                      className="accent-primary"
-                    />
-                    <span className="text-muted-foreground">Show text</span>
-                  </label>
-                  {isText && (
-                    <input
-                      type="text"
-                      value={step.text ?? ''}
-                      onChange={(e) => updateStep(i, { text: e.target.value })}
-                      placeholder="{title} - {artist}"
-                      className="flex-1 px-1.5 py-0.5 rounded bg-background border border-border/50 text-xs font-mono"
-                    />
-                  )}
-                </div>
+                {/* Text input — only for scrolling text effects */}
+                {isScrollingTextEffect(step.effectId) && (
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none">
+                      <input type="checkbox" checked={isText} onChange={() => toggleTextStep(i)} className="accent-primary" />
+                      <span className="text-muted-foreground">Show text</span>
+                    </label>
+                    {isText && (
+                      <input type="text" value={step.text ?? ''} onChange={(e) => updateStep(i, { text: e.target.value })}
+                        placeholder="{title} - {artist}"
+                        className="flex-1 px-1.5 py-0.5 rounded bg-background border border-border/50 text-xs font-mono" />
+                    )}
+                  </div>
+                )}
 
-                {/* Optional per-step overrides */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">Spd:</span>
-                    <input
-                      type="number" min={0} max={255}
-                      value={step.speed ?? 128}
-                      onChange={(e) => updateStep(i, { speed: parseInt(e.target.value) || 128 })}
-                      className="w-10 px-1 py-0.5 rounded bg-background border border-border/50 text-xs text-center"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">Int:</span>
-                    <input
-                      type="number" min={0} max={255}
-                      value={step.intensity ?? 128}
-                      onChange={(e) => updateStep(i, { intensity: parseInt(e.target.value) || 128 })}
-                      className="w-10 px-1 py-0.5 rounded bg-background border border-border/50 text-xs text-center"
-                    />
-                  </div>
+                {/* Color picker (matches main section) */}
+                <div className="flex items-center gap-2">
                   {step.color ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">Color:</span>
-                      <input
-                        type="color"
-                        value={step.color}
-                        onChange={(e) => updateStep(i, { color: e.target.value })}
-                        className="w-5 h-5 rounded border border-border/50 cursor-pointer"
-                      />
+                    <div className="flex items-center gap-1 flex-1">
+                      <span className="text-[10px] text-muted-foreground shrink-0">Color:</span>
+                      <div className="flex-1 max-w-[180px]">
+                        <WledColorPicker color={step.color} onChange={(c) => updateStep(i, { color: c })} />
+                      </div>
                       <button type="button" onClick={() => { const { color: _c, ...rest } = step; const next = [...props.steps]; next[i] = rest; props.onChange(next); }}
-                        className="text-[10px] text-red-400 hover:underline">x</button>
+                        className="text-[10px] text-red-400 hover:underline shrink-0">remove</button>
                     </div>
                   ) : (
                     <button type="button" onClick={() => updateStep(i, { color: '#ff0000' })}
                       className="text-[10px] text-primary hover:underline">+ color</button>
+                  )}
+                </div>
+
+                {/* Per-step sliders */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground w-14">Speed</span>
+                    <input type="range" min={0} max={255} value={step.speed ?? 128}
+                      onChange={(e) => updateStep(i, { speed: parseInt(e.target.value) })}
+                      className="flex-1 accent-primary h-1.5" />
+                    <span className="text-[10px] font-mono w-7 text-right">{step.speed ?? 128}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground w-14">Intensity</span>
+                    <input type="range" min={0} max={255} value={step.intensity ?? 128}
+                      onChange={(e) => updateStep(i, { intensity: parseInt(e.target.value) })}
+                      className="flex-1 accent-primary h-1.5" />
+                    <span className="text-[10px] font-mono w-7 text-right">{step.intensity ?? 128}</span>
+                  </div>
+                  {/* Extra sliders for scrolling text effects */}
+                  {isScrollingTextEffect(step.effectId) && (
+                    <>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground w-14">Y Offset</span>
+                        <input type="range" min={0} max={255} value={step.custom1 ?? 128}
+                          onChange={(e) => updateStep(i, { custom1: parseInt(e.target.value) })}
+                          className="flex-1 accent-cyan-400 h-1.5" />
+                        <span className="text-[10px] font-mono w-7 text-right">{step.custom1 ?? 128}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground w-14">Trail</span>
+                        <input type="range" min={0} max={255} value={step.custom2 ?? 128}
+                          onChange={(e) => updateStep(i, { custom2: parseInt(e.target.value) })}
+                          className="flex-1 accent-cyan-400 h-1.5" />
+                        <span className="text-[10px] font-mono w-7 text-right">{step.custom2 ?? 128}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground w-14">Font Size</span>
+                        <input type="range" min={0} max={255} value={step.custom3 ?? 128}
+                          onChange={(e) => updateStep(i, { custom3: parseInt(e.target.value) })}
+                          className="flex-1 accent-cyan-400 h-1.5" />
+                        <span className="text-[10px] font-mono w-7 text-right">{step.custom3 ?? 128}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground w-14">Rotate</span>
+                        <button onClick={() => updateStep(i, { option1: !(step.option1 ?? false) })}
+                          className={`w-8 h-4 rounded-full transition-colors relative ${step.option1 ? 'bg-cyan-500' : 'bg-secondary'}`}>
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${step.option1 ? 'left-4' : 'left-0.5'}`} />
+                        </button>
+                        <span className="text-[10px] text-muted-foreground">{step.option1 ? 'On' : 'Off'}</span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

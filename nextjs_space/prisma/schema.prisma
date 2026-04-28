@@ -199,6 +199,10 @@ model WledInstance {
   matrixPaletteId  Int      @default(0)            // used when outputType=strip
   matrixSpeed      Int      @default(128)
   matrixIntensity  Int      @default(128)
+  matrixCustom1    Int      @default(128) // y-offset for scrolling text
+  matrixCustom2    Int      @default(128) // trail for scrolling text
+  matrixCustom3    Int      @default(128) // font size for scrolling text
+  matrixOption1    Boolean  @default(false) // rotate for scrolling text
 
   // Output 2 - defaults to an LED strip / perimeter
   perimeterEnabled    Boolean @default(true)
@@ -211,6 +215,10 @@ model WledInstance {
   perimeterPaletteId  Int     @default(0)
   perimeterSpeed      Int     @default(128)
   perimeterIntensity  Int     @default(128)
+  perimeterCustom1    Int     @default(128)
+  perimeterCustom2    Int     @default(128)
+  perimeterCustom3    Int     @default(128)
+  perimeterOption1    Boolean @default(false)
 
   // Effect playlists - JSON arrays of steps that cycle on a timer.
   // Each step: { effectId, duration (secs), text?, paletteId?, color?, speed?, intensity? }

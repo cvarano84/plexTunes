@@ -118,9 +118,13 @@ export function buildMatrixSeg(opts: {
   color: string;
   speed: number;
   intensity: number;
+  custom1?: number;
+  custom2?: number;
+  custom3?: number;
+  option1?: boolean;
 }) {
   const [r, g, b] = hexToRgb(opts.color);
-  return {
+  const seg: Record<string, any> = {
     id: opts.segmentId,
     on: true,
     n: opts.text.slice(0, 64),   // WLED caps segment names
@@ -129,6 +133,12 @@ export function buildMatrixSeg(opts: {
     ix: opts.intensity,
     col: [[r, g, b], [0, 0, 0], [0, 0, 0]],
   };
+  // Custom sliders & options (c1/c2/c3/o1) — used by scrolling text etc.
+  if (opts.custom1 !== undefined) seg.c1 = opts.custom1;
+  if (opts.custom2 !== undefined) seg.c2 = opts.custom2;
+  if (opts.custom3 !== undefined) seg.c3 = opts.custom3;
+  if (opts.option1 !== undefined) seg.o1 = opts.option1;
+  return seg;
 }
 
 export function buildPerimeterSeg(opts: {
