@@ -355,7 +355,24 @@ function MetadataDashboard() {
                 <span className="text-sm font-medium text-amber-400">Background Scrape Running</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Phase: {scrapeStatus.phase} — {scrapeStatus.processed}/{scrapeStatus.total} — {scrapeStatus.current}
+                Phase: <span className="capitalize">{scrapeStatus.phase}</span>
+                {scrapeStatus.total > 0 && <> — {scrapeStatus.processed}/{scrapeStatus.total}</>}
+                {scrapeStatus.current && <> — {scrapeStatus.current}</>}
+              </p>
+              {(scrapeStatus.phasesCompleted?.length ?? 0) > 0 && (
+                <p className="text-xs text-green-400/70 mt-1">
+                  ✓ Completed: {scrapeStatus.phasesCompleted.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+          {!scrapeStatus?.inProgress && scrapeStatus?.phase === 'stopped' && (
+            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+              <p className="text-xs text-blue-400">
+                Scrape stopped — all previously completed data has been saved.
+                {(scrapeStatus.phasesCompleted?.length ?? 0) > 0 && (
+                  <span> Completed phases: {scrapeStatus.phasesCompleted.join(', ')}.</span>
+                )}
               </p>
             </div>
           )}

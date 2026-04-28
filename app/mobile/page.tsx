@@ -413,7 +413,7 @@ export default function MobilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="h-screen bg-zinc-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex-shrink-0">
         <h1 className="text-lg font-bold tracking-tight">{jukeboxTitle}</h1>
@@ -442,7 +442,7 @@ export default function MobilePage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 min-h-0 ${tab === 'artists' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
 
         {/* ════════ NOW PLAYING TAB ════════ */}
         {tab === 'playing' && (
@@ -575,41 +575,11 @@ export default function MobilePage() {
 
         {/* ════════ ARTISTS TAB ════════ */}
         {tab === 'artists' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col flex-1 min-h-0">
             {artistBrowse === 'list' && (
-              <div className="flex flex-col h-full">
-                {/* Artist list — fills available space */}
-                <div ref={artistListRef} className="flex-1 overflow-y-auto px-4 pt-2 pb-2">
-                  {artistsLoading ? (
-                    <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
-                  ) : artists.length > 0 ? (
-                    <div className="space-y-1">
-                      {artists.map((a: any, ai: number) => (
-                        <button
-                          key={a.id}
-                          data-artist-idx={ai}
-                          onClick={() => { fetchArtistDetail(a.id); setArtistBrowse('artist-detail'); }}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-zinc-900 active:bg-zinc-800 transition-colors text-left"
-                        >
-                          <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
-                            <PlexImg thumb={a.thumb} alt={a.name} size={80} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{a.name}</p>
-                            <p className="text-[10px] text-zinc-500">{a._count?.cachedAlbums ?? 0} albums · {a._count?.cachedTracks ?? 0} tracks</p>
-                          </div>
-                          <ChevronLeft className="w-4 h-4 text-zinc-600 rotate-180" />
-                        </button>
-                      ))}
-                      <p className="text-center text-xs text-zinc-600 pt-2">{artists.length} artists</p>
-                    </div>
-                  ) : (
-                    <p className="text-center text-zinc-500 text-sm py-8">No artists found</p>
-                  )}
-                </div>
-
-                {/* A-Z quick jump — anchored to bottom */}
-                <div className="flex flex-wrap gap-1 px-3 py-2 flex-shrink-0 bg-zinc-950 border-t border-zinc-800/50">
+              <div className="flex flex-col flex-1 min-h-0">
+                {/* A-Z quick jump — fixed at top, never scrolls */}
+                <div className="flex flex-wrap gap-1 px-3 py-2 flex-shrink-0 bg-zinc-950 border-b border-zinc-800/50">
                   <button
                     onClick={() => {
                       setArtistLetter(null);
@@ -639,6 +609,36 @@ export default function MobilePage() {
                       }`}
                     >{l}</button>
                   ))}
+                </div>
+
+                {/* Artist list — fills remaining space below alphabet, scrolls independently */}
+                <div ref={artistListRef} className="flex-1 overflow-y-auto min-h-0 px-4 pt-2 pb-2">
+                  {artistsLoading ? (
+                    <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-zinc-500" /></div>
+                  ) : artists.length > 0 ? (
+                    <div className="space-y-1">
+                      {artists.map((a: any, ai: number) => (
+                        <button
+                          key={a.id}
+                          data-artist-idx={ai}
+                          onClick={() => { fetchArtistDetail(a.id); setArtistBrowse('artist-detail'); }}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-zinc-900 active:bg-zinc-800 transition-colors text-left"
+                        >
+                          <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
+                            <PlexImg thumb={a.thumb} alt={a.name} size={80} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{a.name}</p>
+                            <p className="text-[10px] text-zinc-500">{a._count?.cachedAlbums ?? 0} albums · {a._count?.cachedTracks ?? 0} tracks</p>
+                          </div>
+                          <ChevronLeft className="w-4 h-4 text-zinc-600 rotate-180" />
+                        </button>
+                      ))}
+                      <p className="text-center text-xs text-zinc-600 pt-2">{artists.length} artists</p>
+                    </div>
+                  ) : (
+                    <p className="text-center text-zinc-500 text-sm py-8">No artists found</p>
+                  )}
                 </div>
               </div>
             )}

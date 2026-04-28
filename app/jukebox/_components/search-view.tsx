@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from 'react';
-import { Search, Loader2, Music2, Disc, Users, Play, Plus } from 'lucide-react';
+import { Search, Loader2, Music2, Disc, Users, ListStart, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -16,7 +16,7 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const { playTrack, addToQueue } = usePlayer();
+  const { playNext, addToQueue } = usePlayer();
 
   const handleSearch = useCallback(async (q: string) => {
     if ((q?.length ?? 0) < 2) {
@@ -42,7 +42,7 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
     return () => clearTimeout(timer);
   };
 
-  const handlePlayTrack = (track: any) => {
+  const handlePlayNext = (track: any) => {
     const t: TrackInfo = {
       id: track?.id ?? '',
       title: track?.title ?? '',
@@ -54,7 +54,8 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
       ratingKey: track?.ratingKey ?? '',
       year: track?.year ?? track?.album?.year ?? null,
     };
-    playTrack(t);
+    playNext(t);
+    toast.success('Playing next');
   };
 
   const handleAddToQueue = (track: any) => {
@@ -178,10 +179,11 @@ export default function SearchView({ onNavigate }: SearchViewProps) {
                         <Plus className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handlePlayTrack(track)}
+                        onClick={() => handlePlayNext(track)}
                         className="w-9 h-9 rounded-full bg-primary flex items-center justify-center hover:bg-primary/90"
+                        title="Play Next"
                       >
-                        <Play className="w-4 h-4 text-primary-foreground ml-0.5" />
+                        <ListStart className="w-4 h-4 text-primary-foreground" />
                       </button>
                     </div>
                   </motion.div>
