@@ -66,11 +66,11 @@ export function sanitizeBody(body: Record<string, any>): Record<string, any> {
             ...(typeof s.text === 'string' ? { text: s.text } : {}),
             ...(s.paletteId !== undefined ? { paletteId: Math.max(0, Math.min(71, parseInt(s.paletteId) || 0)) } : {}),
             ...(typeof s.color === 'string' && isValidHex(s.color) ? { color: s.color } : {}),
-            ...(s.speed !== undefined ? { speed: Math.max(0, Math.min(255, parseInt(s.speed) || 128)) } : {}),
-            ...(s.intensity !== undefined ? { intensity: Math.max(0, Math.min(255, parseInt(s.intensity) || 128)) } : {}),
-            ...(s.custom1 !== undefined ? { custom1: Math.max(0, Math.min(255, parseInt(s.custom1) || 128)) } : {}),
-            ...(s.custom2 !== undefined ? { custom2: Math.max(0, Math.min(255, parseInt(s.custom2) || 128)) } : {}),
-            ...(s.custom3 !== undefined ? { custom3: Math.max(0, Math.min(255, parseInt(s.custom3) || 128)) } : {}),
+            ...(s.speed !== undefined ? { speed: clampInt(s.speed, 0, 255) ?? 128 } : {}),
+            ...(s.intensity !== undefined ? { intensity: clampInt(s.intensity, 0, 255) ?? 128 } : {}),
+            ...(s.custom1 !== undefined ? { custom1: clampInt(s.custom1, 0, 255) ?? 128 } : {}),
+            ...(s.custom2 !== undefined ? { custom2: clampInt(s.custom2, 0, 255) ?? 128 } : {}),
+            ...(s.custom3 !== undefined ? { custom3: clampInt(s.custom3, 0, 255) ?? 128 } : {}),
             ...(s.option1 !== undefined ? { option1: !!s.option1 } : {}),
           }));
           out[f] = JSON.stringify(clean);

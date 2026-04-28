@@ -58,21 +58,24 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
 
   useEffect(() => {
     const calcSize = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const available = container.clientHeight;
+      // Use scrollRef (the flex-1 grid area) for actual available height
+      const el = scrollRef.current;
+      if (!el) return;
+      const available = el.clientHeight;
+      if (available < 10) return; // not laid out yet
       const gapSize = 12;
       const labelHeight = 28; // artist name + album count text
       const totalGaps = (artistRows - 1) * gapSize;
-      // Fill available space just like stations — no cap
       const perRow = Math.max(80, Math.floor(((available - totalGaps) / artistRows) - labelHeight));
       setItemSize(perRow);
     };
     calcSize();
+    // Observe both — outer for panel resize, inner for layout completion
     const ro = new ResizeObserver(calcSize);
     if (containerRef.current) ro.observe(containerRef.current);
+    if (scrollRef.current) ro.observe(scrollRef.current);
     return () => ro.disconnect();
-  }, [artistRows]);
+  }, [artistRows, artists.length]);
 
   const allArtistsRef = useRef<any[]>([]);
   const initialLoadDone = useRef(false);
@@ -161,7 +164,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
   }
 
   return (
-    <div className="px-4 py-4 h-full flex flex-col">
+    <div ref={containerRef} className="px-4 py-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div>
           <h2 className="text-[clamp(1.25rem,2.5vw,2rem)] font-display font-bold tracking-tight flex items-center gap-3">
@@ -223,10 +226,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
         </div>
       ) : (
         <div
-          ref={(el) => {
-            (scrollRef as any).current = el;
-            (containerRef as any).current = el;
-          }}
+          ref={scrollRef}
           className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-none min-h-0"
         >
           <div className="flex gap-3 h-full items-center">
