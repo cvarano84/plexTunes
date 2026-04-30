@@ -191,6 +191,19 @@ function JukeboxInner() {
           router?.push?.('/setup');
         } else {
           setLoading(false);
+          // Auto-sync: check if last sync was >24h ago, trigger background resync
+          fetch('/api/plex/sync').then(r => r?.json?.()).then(status => {
+            const last = status?.lastSyncAt ? new Date(status.lastSyncAt).getTime() : 0;
+            const hoursSince = (Date.now() - last) / (1000 * 60 * 60);
+            if (hoursSince > 24 && !status?.syncInProgress) {
+              console.log(`[auto-sync] Last sync was ${Math.round(hoursSince)}h ago, starting background sync...`);
+              fetch('/api/plex/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fullSync: true }),
+              }).catch(() => {});
+            }
+          }).catch(() => {});
         }
       })
       .catch(() => router?.push?.('/setup'));
@@ -303,7 +316,7 @@ function JukeboxInner() {
         style={{ paddingBottom: eqBarHeight + 100 }}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} fillPct={stationFillPct} />}
-        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} stationRows={stationRows} fillPct={mixFillPct} />}
+        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} stationRows={stationRows} fillPct={mixFillPct} artistFillPct={artistFillPct} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} fillPct={artistFillPct} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (

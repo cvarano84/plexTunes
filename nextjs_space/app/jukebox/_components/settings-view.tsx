@@ -279,11 +279,37 @@ function MetadataDashboard() {
     setScanningType(type);
     try {
       if (type === 'library') {
-        await fetch('/api/plex/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullSync: true }) });
+        // Fire-and-forget the long-running POST, then poll for progress
+        fetch('/api/plex/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullSync: true }) })
+          .then(async (res) => {
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              setScanningType(null);
+              alert(`Sync error: ${data?.error ?? 'Unknown'}`);
+            }
+          })
+          .catch(() => { setScanningType(null); });
+        // Poll for completion
+        const poll = async () => {
+          for (let i = 0; i < 600; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            try {
+              const sr = await fetch('/api/plex/sync');
+              const status = await sr.json();
+              if (!status?.syncInProgress) {
+                loadStatus();
+                setScanningType(null);
+                return;
+              }
+            } catch { /* continue */ }
+          }
+          setScanningType(null);
+        };
+        setTimeout(poll, 500);
+        return; // Don't fall through to setScanningType(null)
       } else if (type === 'popularity') {
         await fetch('/api/popularity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batchSize: 50 }) });
       }
-      // Refresh status after a short delay
       setTimeout(loadStatus, 2000);
     } catch { /* ignore */ }
     setScanningType(null);

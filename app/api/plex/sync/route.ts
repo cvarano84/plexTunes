@@ -21,16 +21,28 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req?.json?.().catch(() => ({}));
-    // Accept either an explicit sectionId or a `fullSync: true` which falls back to the
-    // libraryId we persisted during the initial setup wizard. This keeps the
-    // "Resync Library" button working without asking the user to pick a library again.
+    // Accept either an explicit sectionId or fall back to the libraryId persisted
+    // during initial setup. If even that is missing, auto-detect the first music
+    // library section so the "Resync Library" button always works.
     let sectionId: string = body?.sectionId ?? '';
     if (!sectionId) {
       sectionId = ctx.config.libraryId ?? '';
     }
     if (!sectionId) {
+      // Auto-detect: ask adapter for available library sections, pick the first one
+      try {
+        const sections = await ctx.adapter.getLibrarySections();
+        if (sections?.length > 0) {
+          sectionId = sections[0].id ?? '';
+          console.log(`[sync] Auto-detected library section: ${sectionId} (${sections[0].title})`);
+        }
+      } catch (e: any) {
+        console.error('[sync] Failed to auto-detect library section:', e?.message);
+      }
+    }
+    if (!sectionId) {
       return NextResponse.json(
-        { error: 'Section ID required. Open the setup wizard to pick a library first.' },
+        { error: 'No music library found. Open the setup wizard to configure your server.' },
         { status: 400 },
       );
     }

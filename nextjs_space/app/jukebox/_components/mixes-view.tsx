@@ -13,6 +13,7 @@ interface MixesViewProps {
   stationQueueSize?: number;
   stationRows?: number;
   fillPct?: number;
+  artistFillPct?: number;
 }
 
 /* ── Mix Card (matches station card styling) ── */
@@ -100,7 +101,7 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNa
 }
 
 /* ── Main Component ── */
-export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3, fillPct = 70 }: MixesViewProps) {
+export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3, fillPct = 70, artistFillPct = 70 }: MixesViewProps) {
   const [mixes, setMixes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingMix, setPlayingMix] = useState<string | null>(null);
@@ -192,24 +193,24 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
     return () => ro.disconnect();
   }, [mixes, stationRows, fillPct]);
 
-  // Artist grid sizing for editor — auto-fill available space (4 rows)
+  // Artist grid sizing for editor — match artist page fill logic
   useEffect(() => {
     const calcArtistSize = () => {
       const container = artistScrollRef.current;
       if (!container) return;
       const available = container.clientHeight;
-      const gap = 8;
-      const labelHeight = 20; // name text below icon
+      const gap = 12;
+      const labelHeight = 28; // name text below icon (match artists-view)
       const rows = 4;
       const totalGaps = (rows - 1) * gap;
-      const perRow = Math.max(40, Math.floor(((available - totalGaps) / rows) - labelHeight));
+      const perRow = Math.max(40, Math.floor(((available - totalGaps) * (artistFillPct / 100) / rows) - labelHeight));
       setArtistItemSize(perRow);
     };
     calcArtistSize();
     const ro = new ResizeObserver(calcArtistSize);
     if (artistScrollRef.current) ro.observe(artistScrollRef.current);
     return () => ro.disconnect();
-  }, [editing]);
+  }, [editing, artistFillPct]);
 
   const handlePlay = async (mix: any) => {
     setPlayingMix(mix.id);

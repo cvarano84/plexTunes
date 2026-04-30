@@ -90,9 +90,9 @@ const DEFAULT_NEW: Partial<Instance> = {
   matrixPaletteId: 0,
   matrixSpeed: 128,
   matrixIntensity: 128,
-  matrixCustom1: 128,
-  matrixCustom2: 128,
-  matrixCustom3: 128,
+  matrixCustom1: 0,     // c1 = Trail (0 = no trail)
+  matrixCustom2: 128,   // c2 = Font Size (128 = default)
+  matrixCustom3: 16,    // c3 = Y Offset (16 = normal / centered)
   matrixOption1: false,
   perimeterEnabled: true,
   perimeterSegmentId: 1,
@@ -773,28 +773,29 @@ function OutputCard(props: OutputCardProps) {
           <span className="text-xs font-mono w-8 text-right">{props.intensity}</span>
         </div>
         {/* Extra sliders for Scrolling Text effects (122, 165) */}
+        {/* WLED API mapping: c1=Trail, c2=Font Size, c3=Y Offset (0-31, 16=normal), o1=Rotate */}
         {isMatrix && isScrollingTextEffect(props.effectId) && (
           <>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground w-16">Y Offset</label>
+              <label className="text-xs text-muted-foreground w-16">Trail</label>
               <input type="range" min={0} max={255} value={props.custom1}
                 onChange={(e) => props.onChange({ custom1: parseInt(e.target.value) })}
                 className="flex-1 accent-cyan-400 h-2" />
               <span className="text-xs font-mono w-8 text-right">{props.custom1}</span>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground w-16">Trail</label>
+              <label className="text-xs text-muted-foreground w-16">Font Size</label>
               <input type="range" min={0} max={255} value={props.custom2}
                 onChange={(e) => props.onChange({ custom2: parseInt(e.target.value) })}
                 className="flex-1 accent-cyan-400 h-2" />
               <span className="text-xs font-mono w-8 text-right">{props.custom2}</span>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground w-16">Font Size</label>
-              <input type="range" min={0} max={255} value={props.custom3}
+              <label className="text-xs text-muted-foreground w-16">Y Offset</label>
+              <input type="range" min={0} max={31} value={Math.min(props.custom3, 31)}
                 onChange={(e) => props.onChange({ custom3: parseInt(e.target.value) })}
                 className="flex-1 accent-cyan-400 h-2" />
-              <span className="text-xs font-mono w-8 text-right">{props.custom3}</span>
+              <span className="text-xs font-mono w-8 text-right">{Math.min(props.custom3, 31)}</span>
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-muted-foreground w-16">Rotate</label>
@@ -1075,28 +1076,29 @@ function EffectPlaylistEditor(props: {
                     <span className="text-[10px] font-mono w-7 text-right">{step.intensity ?? 128}</span>
                   </div>
                   {/* Extra sliders for scrolling text effects */}
+                  {/* WLED API: c1=Trail, c2=Font Size, c3=Y Offset (0-31), o1=Rotate */}
                   {isScrollingTextEffect(step.effectId) && (
                     <>
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-muted-foreground w-14">Y Offset</span>
-                        <input type="range" min={0} max={255} value={step.custom1 ?? 128}
+                        <span className="text-[10px] text-muted-foreground w-14">Trail</span>
+                        <input type="range" min={0} max={255} value={step.custom1 ?? 0}
                           onChange={(e) => updateStep(i, { custom1: parseInt(e.target.value) })}
                           className="flex-1 accent-cyan-400 h-1.5" />
-                        <span className="text-[10px] font-mono w-7 text-right">{step.custom1 ?? 128}</span>
+                        <span className="text-[10px] font-mono w-7 text-right">{step.custom1 ?? 0}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-muted-foreground w-14">Trail</span>
+                        <span className="text-[10px] text-muted-foreground w-14">Font Size</span>
                         <input type="range" min={0} max={255} value={step.custom2 ?? 128}
                           onChange={(e) => updateStep(i, { custom2: parseInt(e.target.value) })}
                           className="flex-1 accent-cyan-400 h-1.5" />
                         <span className="text-[10px] font-mono w-7 text-right">{step.custom2 ?? 128}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-muted-foreground w-14">Font Size</span>
-                        <input type="range" min={0} max={255} value={step.custom3 ?? 128}
+                        <span className="text-[10px] text-muted-foreground w-14">Y Offset</span>
+                        <input type="range" min={0} max={31} value={Math.min(step.custom3 ?? 16, 31)}
                           onChange={(e) => updateStep(i, { custom3: parseInt(e.target.value) })}
                           className="flex-1 accent-cyan-400 h-1.5" />
-                        <span className="text-[10px] font-mono w-7 text-right">{step.custom3 ?? 128}</span>
+                        <span className="text-[10px] font-mono w-7 text-right">{Math.min(step.custom3 ?? 16, 31)}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-muted-foreground w-14">Rotate</span>
