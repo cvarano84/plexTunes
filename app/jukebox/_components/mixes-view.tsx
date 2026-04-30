@@ -12,7 +12,7 @@ interface MixesViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   stationQueueSize?: number;
   stationRows?: number;
-  mixArtistIconSize?: number;
+  fillPct?: number;
 }
 
 /* ── Mix Card (matches station card styling) ── */
@@ -100,7 +100,7 @@ function MixCard({ mix, onPlay, onEdit, onDelete, isPlaying, cardSize, stationNa
 }
 
 /* ── Main Component ── */
-export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3, mixArtistIconSize = 100 }: MixesViewProps) {
+export default function MixesView({ onNavigate, stationQueueSize = 25, stationRows = 3, fillPct = 70 }: MixesViewProps) {
   const [mixes, setMixes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingMix, setPlayingMix] = useState<string | null>(null);
@@ -120,7 +120,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const artistScrollRef = useRef<HTMLDivElement>(null);
   const artistContainerRef = useRef<HTMLDivElement>(null);
   const [cardSize, setCardSize] = useState(200);
-  const [artistItemSize, setArtistItemSize] = useState(mixArtistIconSize);
+  const [artistItemSize, setArtistItemSize] = useState(100);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -183,14 +183,14 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
       const available = container.clientHeight;
       const gap = 12;
       const totalGaps = (stationRows - 1) * gap;
-      const perRow = Math.max(120, Math.round((available - totalGaps) * 0.70 / stationRows));
+      const perRow = Math.max(120, Math.round((available - totalGaps) * (fillPct / 100) / stationRows));
       setCardSize(perRow);
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [mixes, stationRows]);
+  }, [mixes, stationRows, fillPct]);
 
   // Artist grid sizing for editor — auto-fill available space (4 rows)
   useEffect(() => {

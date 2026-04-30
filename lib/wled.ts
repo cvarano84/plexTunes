@@ -50,10 +50,12 @@ export async function postState(host: string, state: WledJsonState, timeoutMs = 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const payload = JSON.stringify(state);
+    console.log(`[WLED] POST ${baseUrl(host)}/json/state`, payload.slice(0, 500));
     const res = await fetch(`${baseUrl(host)}/json/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
+      body: payload,
       signal: controller.signal,
       cache: 'no-store',
     });

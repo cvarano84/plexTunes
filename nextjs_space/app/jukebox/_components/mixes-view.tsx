@@ -120,7 +120,7 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   const artistScrollRef = useRef<HTMLDivElement>(null);
   const artistContainerRef = useRef<HTMLDivElement>(null);
   const [cardSize, setCardSize] = useState(200);
-  const [artistItemSize, setArtistItemSize] = useState(mixArtistIconSize);
+  const [artistItemSize, setArtistItemSize] = useState(100);
 
   // Form state
   const [formName, setFormName] = useState('');

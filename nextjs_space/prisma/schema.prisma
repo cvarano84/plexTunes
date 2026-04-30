@@ -165,6 +165,9 @@ model JukeboxSettings {
   artistSimilarHeight Int      @default(25)
   artistTrackWidth    Int      @default(25)
   mixArtistIconSize   Int      @default(100)
+  stationFillPct      Int      @default(70)
+  artistFillPct       Int      @default(70)
+  mixFillPct          Int      @default(70)
   sweetFades          Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }

@@ -13,6 +13,24 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+/** Deduplicate tracks by artist+title so the same song on multiple albums
+ *  only counts once. Keeps the version with highest popularity/playCount. */
+function dedupeTracks(tracks: any[]): any[] {
+  const seen = new Map<string, any>();
+  for (const t of tracks) {
+    const key = `${(t?.artistName ?? t?.artist?.name ?? '').toLowerCase()}::${(t?.title ?? '').toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim()}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, t);
+    } else {
+      const ep = (existing?.popularity ?? 0) + (existing?.playCount ?? 0);
+      const np = (t?.popularity ?? 0) + (t?.playCount ?? 0);
+      if (np > ep) seen.set(key, t);
+    }
+  }
+  return [...seen.values()];
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const stationId = params?.id ?? '';
@@ -43,7 +61,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         weight: (t.playCount ?? 1) + Math.random() * 5,
       }));
       weighted.sort((a: any, b: any) => b.weight - a.weight);
-      const selected = weighted.slice(0, limit);
+      const selected = dedupeTracks(weighted).slice(0, limit);
 
       return NextResponse.json({ station, tracks: selected });
     }
@@ -97,7 +115,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         if (Math.abs(popA - popB) <= 5) return Math.random() - 0.5;
         return popB - popA;
       });
-      const combined = [...withPop.slice(0, 50), ...shuffle(noPop).slice(0, Math.max(0, 50 - withPop.length))];
+      const combined = dedupeTracks([...withPop.slice(0, 50), ...shuffle(noPop).slice(0, Math.max(0, 50 - withPop.length))]);
       const selected = shuffle(combined).slice(0, limit);
 
       return NextResponse.json({ station, tracks: selected });
@@ -126,7 +144,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       return popB - popA;
     }) ?? [];
 
-    const selected = sorted?.slice?.(0, 50) ?? [];
+    const deduped = dedupeTracks(sorted ?? []);
+    const selected = deduped.slice(0, 50);
     const shuffled = shuffle(selected).slice(0, limit);
 
     return NextResponse.json({ station, tracks: shuffled });

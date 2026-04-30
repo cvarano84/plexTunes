@@ -87,6 +87,9 @@ model CachedTrack {
   billboardCheckedAt DateTime?
   bpm             Float?
   bpmChecked      Boolean       @default(false)
+  syncedLyrics    String?       // LRC format time-synced lyrics
+  plainLyrics     String?       // plain text lyrics (fallback)
+  lyricsCheckedAt DateTime?     // when lyrics were last searched
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -162,6 +165,9 @@ model JukeboxSettings {
   artistSimilarHeight Int      @default(25)
   artistTrackWidth    Int      @default(25)
   mixArtistIconSize   Int      @default(100)
+  stationFillPct      Int      @default(70)
+  artistFillPct       Int      @default(70)
+  mixFillPct          Int      @default(70)
   sweetFades          Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }

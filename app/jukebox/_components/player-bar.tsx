@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -43,10 +43,16 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
     partyBeatRate,
     setPartyBeatRate,
     detectedBpm,
+    nightMode,
+    setNightMode,
+    nightDim,
+    setNightDim,
   } = usePlayer();
 
   const [partyPopover, setPartyPopover] = useState(false);
   const partyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [nightPopover, setNightPopover] = useState(false);
+  const nightTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Auto-close party beat popover after 15 seconds
   useEffect(() => {
@@ -56,6 +62,15 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
     }
     return () => { if (partyTimerRef.current) clearTimeout(partyTimerRef.current); };
   }, [partyPopover]);
+
+  // Auto-close night mode popover after 15 seconds
+  useEffect(() => {
+    if (nightPopover) {
+      if (nightTimerRef.current) clearTimeout(nightTimerRef.current);
+      nightTimerRef.current = setTimeout(() => setNightPopover(false), 15000);
+    }
+    return () => { if (nightTimerRef.current) clearTimeout(nightTimerRef.current); };
+  }, [nightPopover]);
 
   const [qrOpen, setQrOpen] = useState(false);
   const [mobileUrl, setMobileUrl] = useState('');
@@ -87,10 +102,12 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 z-50"
     >
-      {/* LED Equalizer - solid background, part of the bar */}
-      <div className="bg-card px-4 py-1">
-        <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} height={eqBarHeight} />
-      </div>
+      {/* LED Equalizer - solid background, part of the bar (hidden in night mode) */}
+      {!nightMode && (
+        <div className="bg-card px-4 py-1">
+          <LEDEqualizer analyserNode={analyserNode} isPlaying={isPlaying} bandCount={eqBands} colorScheme={eqColorScheme} height={eqBarHeight} />
+        </div>
+      )}
 
       {/* Progress bar (clickable) */}
       <div
@@ -127,6 +144,72 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />
             )}
           </button>
+
+          {/* Night Mode button */}
+          <div className="relative">
+            <button
+              onClick={() => setNightPopover(p => !p)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors relative ${
+                nightMode ? 'bg-indigo-700 text-white' : 'text-muted-foreground hover:bg-secondary'
+              }`}
+              title={nightMode ? 'Night Mode: ON' : 'Night Mode: OFF'}
+            >
+              <Moon className="w-5 h-5" />
+              {nightMode && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400" />
+              )}
+            </button>
+            <AnimatePresence>
+              {nightPopover && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                  className="absolute bottom-14 left-1/2 -translate-x-1/2 z-[100] bg-card border border-border/40 rounded-xl p-3 shadow-2xl min-w-[200px]"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <Moon className="w-3.5 h-3.5 text-indigo-400" /> Night Mode
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setNightMode(!nightMode)}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${nightMode ? 'bg-indigo-500' : 'bg-secondary'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${nightMode ? 'left-[18px]' : 'left-0.5'}`} />
+                      </button>
+                      <button onClick={() => setNightPopover(false)} className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-secondary">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                  {nightMode && (
+                    <>
+                      <p className="text-[10px] text-muted-foreground mb-2">Bass cut, WLED off, screen dimmed</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground">Darkness</span>
+                          <span className="text-xs font-bold tabular-nums">{nightDim}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="90"
+                          value={nightDim}
+                          onChange={(e) => setNightDim(parseInt(e.target.value))}
+                          className="w-full accent-indigo-500"
+                        />
+                        <div className="flex justify-between text-[9px] text-muted-foreground">
+                          <span>0%</span>
+                          <span>90%</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Party Beat button */}
           <div className="relative">

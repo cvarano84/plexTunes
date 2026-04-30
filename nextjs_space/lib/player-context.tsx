@@ -94,6 +94,10 @@ interface PlayerContextType extends PlayerState {
   partyBeatRate: number;
   setPartyBeatRate: (rate: number) => void;
   detectedBpm: number | null;
+  nightMode: boolean;
+  setNightMode: (enabled: boolean) => void;
+  nightDim: number;
+  setNightDim: (dim: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -128,6 +132,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [partyBeat, setPartyBeatState] = useState(false);
   const [partyBeatRate, setPartyBeatRateState] = useState(1.08);
   const [detectedBpm, setDetectedBpm] = useState<number | null>(null);
+  const [nightMode, setNightModeState] = useState(false);
+  const [nightDim, setNightDimState] = useState(70);
+  const preNightEqRef = useRef<{ eqGains: EqGains; eqPreset: string; advancedEqGains: number[]; advancedEqPreset: string; eqMode: 'simple' | 'advanced' } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeAudioRef = useRef<HTMLAudioElement | null>(null);
   const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -315,6 +322,43 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (xAudio) { xAudio.preservesPitch = true; xAudio.playbackRate = clamped; }
     }
   }, [partyBeat]);
+
+  // Night Mode: bass-cut EQ + kill WLED + dim overlay
+  const setNightMode = useCallback((enabled: boolean) => {
+    setNightModeState(enabled);
+    if (enabled) {
+      // Save current EQ state for restoration
+      preNightEqRef.current = {
+        eqGains: { ...eqGains },
+        eqPreset: eqPreset,
+        advancedEqGains: [...advancedEqGains],
+        advancedEqPreset: advancedEqPreset,
+        eqMode: eqMode,
+      };
+      // Apply bass-cut: reduce bass, leave mid/treble neutral
+      setEqGains({ bass: -8, mid: 0, treble: 0 });
+      setEqPresetState('custom');
+      // Kill all WLED panels
+      fetch('/api/wled/nightmode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: false }) }).catch(() => {});
+    } else {
+      // Restore previous EQ
+      const prev = preNightEqRef.current;
+      if (prev) {
+        setEqGains(prev.eqGains);
+        setEqPresetState(prev.eqPreset);
+        setAdvancedEqGains(prev.advancedEqGains);
+        setAdvancedEqPresetState(prev.advancedEqPreset);
+        setEqModeState(prev.eqMode);
+        preNightEqRef.current = null;
+      }
+      // Turn WLED panels back on
+      fetch('/api/wled/nightmode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: true }) }).catch(() => {});
+    }
+  }, [eqGains, eqPreset, advancedEqGains, advancedEqPreset, eqMode]);
+
+  const setNightDim = useCallback((dim: number) => {
+    setNightDimState(Math.max(0, Math.min(100, dim)));
+  }, []);
 
   // BPM lookup from API (Deezer) — fetches once per track when party beat is on
   useEffect(() => {
@@ -868,6 +912,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         partyBeatRate,
         setPartyBeatRate,
         detectedBpm,
+        nightMode,
+        setNightMode,
+        nightDim,
+        setNightDim,
       }}
     >
       {children}

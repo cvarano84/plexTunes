@@ -60,7 +60,7 @@ function JukeboxInner() {
 
   // Idle timer
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue, currentTime, currentStationName } = usePlayer();
+  const { currentTrack, isPlaying, queue: playerQueue, queueIndex, addToQueue: playerAddToQueue, currentTime, currentStationName, nightMode, nightDim } = usePlayer();
 
   // Load settings from server (with localStorage as fast cache)
   useEffect(() => {
@@ -287,6 +287,13 @@ function JukeboxInner() {
   return (
     <div className="h-screen flex flex-col bg-background hero-gradient overflow-hidden relative">
       <AnimatedBackground style={bgStyle} musicReactive={bgMusicReactive} />
+      {/* Night mode darkness overlay */}
+      {nightMode && nightDim > 0 && (
+        <div
+          className="fixed inset-0 bg-black pointer-events-none transition-opacity duration-500"
+          style={{ opacity: nightDim / 100, zIndex: 40 }}
+        />
+      )}
       <div className="relative z-[1] flex flex-col flex-1 min-h-0">
       <JukeboxHeader onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} jukeboxTitle={jukeboxTitle} />
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
