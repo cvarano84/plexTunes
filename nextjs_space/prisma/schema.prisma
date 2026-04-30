@@ -87,6 +87,9 @@ model CachedTrack {
   billboardCheckedAt DateTime?
   bpm             Float?
   bpmChecked      Boolean       @default(false)
+  syncedLyrics    String?       // LRC format time-synced lyrics
+  plainLyrics     String?       // plain text lyrics (fallback)
+  lyricsCheckedAt DateTime?     // when lyrics were last searched
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

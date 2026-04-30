@@ -12,6 +12,7 @@ interface StationsViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   stationRows?: number;
   stationQueueSize?: number;
+  fillPct?: number;
 }
 
 const DECADE_COLORS: Record<string, string> = {
@@ -105,7 +106,7 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
   );
 }
 
-export default function StationsView({ onNavigate, stationRows = 1, stationQueueSize = 5 }: StationsViewProps) {
+export default function StationsView({ onNavigate, stationRows = 1, stationQueueSize = 5, fillPct = 70 }: StationsViewProps) {
   const [stations, setStations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
@@ -133,14 +134,14 @@ export default function StationsView({ onNavigate, stationRows = 1, stationQueue
       const gap = 12;
       const totalGaps = (stationRows - 1) * gap;
       // Cards should fill ~70% of the available height per row
-      const perRow = Math.max(120, Math.round((available - totalGaps) * 0.70 / stationRows));
+      const perRow = Math.max(120, Math.round((available - totalGaps) * (fillPct / 100) / stationRows));
       setCardSize(perRow);
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [stations, stationRows]);
+  }, [stations, stationRows, fillPct]);
 
   // Infinite carousel: debounced wrap after scrolling stops
   const wrapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

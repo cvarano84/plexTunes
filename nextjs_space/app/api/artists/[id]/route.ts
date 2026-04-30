@@ -36,6 +36,24 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       artist.cachedTracks = [...artist.cachedTracks, ...moreTracks];
     }
 
+    // Deduplicate tracks by title — same song on multiple albums should appear once.
+    // Keep the version with highest popularity/playCount.
+    if (artist && popularOnly) {
+      const seen = new Map<string, typeof artist.cachedTracks[0]>();
+      for (const t of artist.cachedTracks) {
+        const key = (t.title ?? '').toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim();
+        const existing = seen.get(key);
+        if (!existing) {
+          seen.set(key, t);
+        } else {
+          const existPop = (existing.popularity ?? 0) + (existing.playCount ?? 0);
+          const newPop = (t.popularity ?? 0) + (t.playCount ?? 0);
+          if (newPop > existPop) seen.set(key, t);
+        }
+      }
+      artist.cachedTracks = [...seen.values()];
+    }
+
     if (!artist) {
       return NextResponse.json({ error: 'Artist not found' }, { status: 404 });
     }

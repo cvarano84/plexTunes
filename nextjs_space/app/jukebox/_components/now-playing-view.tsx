@@ -211,6 +211,7 @@ export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 
       title: currentTrack.title,
       artist: currentTrack.artistName,
     });
+    if (currentTrack.id) params.set('trackId', currentTrack.id);
     if (currentTrack.albumTitle) params.set('album', currentTrack.albumTitle);
     if (currentTrack.duration) params.set('duration', String(currentTrack.duration));
     fetch(`/api/lyrics?${params}`)

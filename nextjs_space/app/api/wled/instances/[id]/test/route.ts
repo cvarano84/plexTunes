@@ -39,9 +39,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         color: inst.matrixColor,
         speed: inst.matrixSpeed,
         intensity: inst.matrixIntensity,
+        custom1: (inst as any).matrixCustom1 ?? 128,
+        custom2: (inst as any).matrixCustom2 ?? 128,
+        custom3: (inst as any).matrixCustom3 ?? 128,
+        option1: (inst as any).matrixOption1 ?? false,
       }));
     } else {
-      // 'strip': treat Output 1 as ambient LED strip
       segs.push(buildPerimeterSeg({
         segmentId: inst.matrixSegmentId,
         effectId: inst.matrixEffectId,
@@ -63,9 +66,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         color: inst.perimeterColor,
         speed: inst.perimeterSpeed,
         intensity: inst.perimeterIntensity,
+        custom1: (inst as any).perimeterCustom1 ?? 128,
+        custom2: (inst as any).perimeterCustom2 ?? 128,
+        custom3: (inst as any).perimeterCustom3 ?? 128,
+        option1: (inst as any).perimeterOption1 ?? false,
       }));
     } else {
-      // 'strip' (default for Output 2): ambient LED strip
       segs.push(buildPerimeterSeg({
         segmentId: inst.perimeterSegmentId,
         effectId: inst.perimeterEffectId,

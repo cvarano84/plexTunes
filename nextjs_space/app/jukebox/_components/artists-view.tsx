@@ -9,11 +9,12 @@ import PlexImage from './plex-image';
 interface ArtistsViewProps {
   onNavigate: (view: ViewType, opts?: any) => void;
   artistRows?: number;
+  fillPct?: number;
 }
 
 const LETTERS = ['All', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')];
 
-export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewProps) {
+export default function ArtistsView({ onNavigate, artistRows = 4, fillPct = 70 }: ArtistsViewProps) {
   const [artists, setArtists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -66,7 +67,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
       const gapSize = 12;
       const labelHeight = 28; // artist name + album count text
       const totalGaps = (artistRows - 1) * gapSize;
-      const perRow = Math.max(80, Math.floor(((available - totalGaps) / artistRows) - labelHeight));
+      const perRow = Math.max(80, Math.floor(((available - totalGaps) * (fillPct / 100) / artistRows) - labelHeight));
       setItemSize(perRow);
     };
     calcSize();
@@ -75,7 +76,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4 }: ArtistsViewP
     if (containerRef.current) ro.observe(containerRef.current);
     if (scrollRef.current) ro.observe(scrollRef.current);
     return () => ro.disconnect();
-  }, [artistRows, artists.length]);
+  }, [artistRows, artists.length, fillPct]);
 
   const allArtistsRef = useRef<any[]>([]);
   const initialLoadDone = useRef(false);

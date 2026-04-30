@@ -38,8 +38,12 @@ interface SettingsViewProps {
   onArtistSimilarHeightChange: (val: number) => void;
   artistTrackWidth: number;
   onArtistTrackWidthChange: (val: number) => void;
-  mixArtistIconSize: number;
-  onMixArtistIconSizeChange: (val: number) => void;
+  stationFillPct: number;
+  onStationFillPctChange: (val: number) => void;
+  artistFillPct: number;
+  onArtistFillPctChange: (val: number) => void;
+  mixFillPct: number;
+  onMixFillPctChange: (val: number) => void;
   bgStyle: string;
   onBgStyleChange: (val: any) => void;
   bgMusicReactive: boolean;
@@ -449,13 +453,16 @@ export default function SettingsView({
   artistAlbumHeight, onArtistAlbumHeightChange,
   artistSimilarHeight, onArtistSimilarHeightChange,
   artistTrackWidth, onArtistTrackWidthChange,
-  mixArtistIconSize, onMixArtistIconSizeChange,
+  stationFillPct, onStationFillPctChange,
+  artistFillPct, onArtistFillPctChange,
+  mixFillPct, onMixFillPctChange,
   bgStyle, onBgStyleChange,
   bgMusicReactive, onBgMusicReactiveChange,
 }: SettingsViewProps) {
   const [diagnostics, setDiagnostics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [resyncing, setResyncing] = useState(false);
+  const [resyncProgress, setResyncProgress] = useState('');
   const [popularityRunning, setPopularityRunning] = useState(false);
   const [popularityProgress, setPopularityProgress] = useState('');
   const [bpmRunning, setBpmRunning] = useState(false);
@@ -661,17 +668,52 @@ export default function SettingsView({
 
   const handleResync = async () => {
     setResyncing(true);
+    setResyncProgress('Starting sync...');
     try {
-      // Backend-agnostic: the sync route falls back to the saved libraryId when no
-      // sectionId is passed, so we just trigger the sync directly.
-      await fetch('/api/plex/sync', {
+      // Fire the sync POST — this is a long-running operation.
+      // Don't await it; instead poll GET /api/plex/sync for progress.
+      fetch('/api/plex/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fullSync: true }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setResyncProgress(`Error: ${data?.error ?? 'Sync failed'}`);
+          setResyncing(false);
+        }
+      }).catch((err) => {
+        setResyncProgress(`Error: ${err?.message ?? 'Network error'}`);
+        setResyncing(false);
       });
-      setTimeout(fetchDiagnostics, 2000);
-    } catch { /* ignore */ }
-    setResyncing(false);
+
+      // Poll for progress
+      const poll = async () => {
+        for (let i = 0; i < 600; i++) { // max ~10 min
+          await new Promise(r => setTimeout(r, 1000));
+          try {
+            const sr = await fetch('/api/plex/sync');
+            const status = await sr.json();
+            setResyncProgress(status?.syncMessage ?? 'Syncing...');
+            if (!status?.syncInProgress) {
+              // Done
+              fetchDiagnostics();
+              setResyncing(false);
+              setResyncProgress(status?.syncMessage ?? 'Sync complete!');
+              setTimeout(() => setResyncProgress(''), 5000);
+              return;
+            }
+          } catch { /* continue polling */ }
+        }
+        setResyncing(false);
+        setResyncProgress('Sync timed out');
+      };
+      // Start polling after a brief delay to let the POST begin
+      setTimeout(poll, 500);
+    } catch {
+      setResyncProgress('Failed to start sync');
+      setResyncing(false);
+    }
   };
 
   const handleRunPopularity = async () => {
@@ -1031,7 +1073,7 @@ export default function SettingsView({
           />
         </div>
 
-        <div className="flex gap-2 mt-3 flex-wrap">
+        <div className="flex gap-2 mt-3 flex-wrap items-center">
           <button
             onClick={handleResync}
             disabled={resyncing}
@@ -1040,6 +1082,11 @@ export default function SettingsView({
             {resyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
             Resync Library
           </button>
+          {resyncProgress && (
+            <span className={`text-xs ${resyncProgress.startsWith('Error') ? 'text-red-400' : 'text-muted-foreground'}`}>
+              {resyncProgress}
+            </span>
+          )}
         </div>
       </motion.div>
 
@@ -1156,11 +1203,24 @@ export default function SettingsView({
           </div>
 
           <div className="p-4 rounded-lg bg-secondary/40 border border-border/20">
-            <label className="text-sm font-medium">Mix Editor Artist Icon Size</label>
-            <p className="text-xs text-muted-foreground mb-2">Diameter (in pixels) of the round artist thumbnails in the Mix editor</p>
-            <div className="flex items-center gap-3">
-              <input type="range" min="50" max="240" step="2" value={mixArtistIconSize} onChange={(e) => onMixArtistIconSizeChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
-              <span className="text-sm font-mono w-16 text-right">{mixArtistIconSize}px</span>
+            <label className="text-sm font-medium">Cover Art Fill %</label>
+            <p className="text-xs text-muted-foreground mb-2">How much of the available height each page&apos;s artwork fills</p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-16">Stations</span>
+                <input type="range" min="40" max="100" step="5" value={stationFillPct} onChange={(e) => onStationFillPctChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+                <span className="text-sm font-mono w-12 text-right">{stationFillPct}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-16">Artists</span>
+                <input type="range" min="40" max="100" step="5" value={artistFillPct} onChange={(e) => onArtistFillPctChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+                <span className="text-sm font-mono w-12 text-right">{artistFillPct}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-16">Mixes</span>
+                <input type="range" min="40" max="100" step="5" value={mixFillPct} onChange={(e) => onMixFillPctChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+                <span className="text-sm font-mono w-12 text-right">{mixFillPct}%</span>
+              </div>
             </div>
           </div>
 
