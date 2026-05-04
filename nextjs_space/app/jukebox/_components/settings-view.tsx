@@ -44,6 +44,8 @@ interface SettingsViewProps {
   onArtistFillPctChange: (val: number) => void;
   mixFillPct: number;
   onMixFillPctChange: (val: number) => void;
+  mixEditorFillPct: number;
+  onMixEditorFillPctChange: (val: number) => void;
   bgStyle: string;
   onBgStyleChange: (val: any) => void;
   bgMusicReactive: boolean;
@@ -482,6 +484,7 @@ export default function SettingsView({
   stationFillPct, onStationFillPctChange,
   artistFillPct, onArtistFillPctChange,
   mixFillPct, onMixFillPctChange,
+  mixEditorFillPct, onMixEditorFillPctChange,
   bgStyle, onBgStyleChange,
   bgMusicReactive, onBgMusicReactiveChange,
 }: SettingsViewProps) {
@@ -1246,6 +1249,11 @@ export default function SettingsView({
                 <span className="text-xs text-muted-foreground w-16">Mixes</span>
                 <input type="range" min="40" max="100" step="5" value={mixFillPct} onChange={(e) => onMixFillPctChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
                 <span className="text-sm font-mono w-12 text-right">{mixFillPct}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-16">Mix Editor</span>
+                <input type="range" min="40" max="100" step="5" value={mixEditorFillPct} onChange={(e) => onMixEditorFillPctChange(parseInt(e.target.value))} className="flex-1 h-2 accent-primary" />
+                <span className="text-sm font-mono w-12 text-right">{mixEditorFillPct}%</span>
               </div>
             </div>
           </div>

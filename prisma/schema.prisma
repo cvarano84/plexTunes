@@ -87,6 +87,7 @@ model CachedTrack {
   billboardCheckedAt DateTime?
   bpm             Float?
   bpmChecked      Boolean       @default(false)
+  hearted         Boolean       @default(false)
   syncedLyrics    String?       // LRC format time-synced lyrics
   plainLyrics     String?       // plain text lyrics (fallback)
   lyricsCheckedAt DateTime?     // when lyrics were last searched
@@ -100,6 +101,7 @@ model CachedTrack {
   @@index([popularity])
   @@index([playCount])
   @@index([billboardPeak])
+  @@index([hearted])
 }
 
 model Station {
@@ -168,6 +170,7 @@ model JukeboxSettings {
   stationFillPct      Int      @default(70)
   artistFillPct       Int      @default(70)
   mixFillPct          Int      @default(70)
+  mixEditorFillPct    Int      @default(70)
   sweetFades          Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 }

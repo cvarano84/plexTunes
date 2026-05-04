@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Play, Plus, Loader2, Disc, Music2, Star, ListPlus, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Play, Plus, Loader2, Disc, Music2, Star, ListPlus, Users, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -50,6 +50,7 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
   const [albumTracksLoading, setAlbumTracksLoading] = useState(false);
   const { playQueue, addToQueue, playNext } = usePlayer();
   const albumScrollRef = useRef<HTMLDivElement>(null);
+  const [heartedIds, setHeartedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!artistId) return;
@@ -62,6 +63,14 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
       .then(data => {
         setArtist(data?.artist ?? null);
         setLoading(false);
+        // Fetch heart status for all tracks
+        const trackIds = (data?.artist?.cachedTracks ?? []).map((t: any) => t.id);
+        if (trackIds.length > 0) {
+          fetch('/api/tracks/heart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds }) })
+            .then(r => r?.json?.())
+            .then(d => setHeartedIds(new Set(d?.heartedIds ?? [])))
+            .catch(() => {});
+        }
       })
       .catch(() => setLoading(false));
   }, [artistId, showAllTracks]);
@@ -120,7 +129,16 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
     try {
       const res = await fetch(`/api/albums/${album.id}`);
       const data = await res?.json?.();
-      setAlbumTracks(data?.cachedTracks ?? data?.album?.cachedTracks ?? []);
+      const tracks = data?.cachedTracks ?? data?.album?.cachedTracks ?? [];
+      setAlbumTracks(tracks);
+      // Fetch heart status for album tracks
+      const trackIds = tracks.map((t: any) => t.id);
+      if (trackIds.length > 0) {
+        fetch('/api/tracks/heart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds }) })
+          .then(r => r?.json?.())
+          .then(d => setHeartedIds(prev => { const next = new Set(prev); (d?.heartedIds ?? []).forEach((id: string) => next.add(id)); return next; }))
+          .catch(() => {});
+      }
     } catch {
       setAlbumTracks([]);
     }
@@ -141,6 +159,25 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
   const handleBackToPopular = () => {
     setSelectedAlbum(null);
     setAlbumTracks([]);
+  };
+
+  const handlePlayAlbum = () => {
+    if (!albumTracks?.length) return;
+    const tracks = albumTracks.map(makeTrackInfo);
+    playQueue(tracks);
+    toast.success(`Playing ${selectedAlbum?.title ?? 'Album'}`);
+  };
+
+  const toggleHeart = async (trackId: string) => {
+    try {
+      const res = await fetch('/api/tracks/heart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId }) });
+      const data = await res?.json?.();
+      setHeartedIds(prev => {
+        const next = new Set(prev);
+        if (data?.hearted) next.add(trackId); else next.delete(trackId);
+        return next;
+      });
+    } catch {}
   };
 
   const scrollAlbums = (dir: 'left' | 'right') => {
@@ -246,7 +283,7 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
                   </button>
                 </div>
               </div>
-              <div ref={albumScrollRef} className="flex gap-3 overflow-x-auto scrollbar-none flex-1 min-h-0 items-start">
+              <div ref={albumScrollRef} className="flex gap-3 overflow-x-auto scrollbar-none flex-1 min-h-0 items-start py-1 px-0.5">
                 {(artist?.cachedAlbums ?? [])?.map?.((album: any) => (
                   <button
                     key={album?.id ?? ''}
@@ -312,7 +349,13 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
                 </button>
                 <Disc className="w-4 h-4 text-primary ml-1" />
                 <h3 className="text-sm font-display font-semibold truncate">{selectedAlbum.title}</h3>
-                <span className="text-xs text-muted-foreground ml-auto">{albumTracks?.length ?? 0}</span>
+                <span className="text-xs text-muted-foreground">{albumTracks?.length ?? 0}</span>
+                <button
+                  onClick={handlePlayAlbum}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium active:bg-primary/80 transition-colors ml-auto"
+                >
+                  <Play className="w-3 h-3" /> Play Album
+                </button>
               </>
             ) : (
               <>
@@ -343,7 +386,7 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
                     <p className="text-xs font-medium truncate">{track?.title ?? ''}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{selectedAlbum ? (selectedAlbum?.title ?? '') : (track?.albumTitle ?? '')}</p>
                   </div>
-                  {!selectedAlbum && (track?.popularity ?? 0) > 0 && (
+                  {(track?.popularity ?? 0) > 0 && (
                     <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground flex-shrink-0">
                       <Star className="w-2.5 h-2.5 text-amber-400" />
                       {track?.popularity}
@@ -353,6 +396,13 @@ export default function ArtistDetailView({ artistId, initialAlbumId, onNavigate,
                     {formatDuration(track?.duration)}
                   </span>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => toggleHeart(track?.id)}
+                      className="w-7 h-7 rounded flex items-center justify-center transition-colors"
+                      title={heartedIds.has(track?.id) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${heartedIds.has(track?.id) ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
+                    </button>
                     <button
                       onClick={() => { addToQueue(makeTrackInfo(track)); toast.success('Queued'); }}
                       className="w-7 h-7 rounded flex items-center justify-center bg-secondary text-foreground text-xs active:bg-primary active:text-primary-foreground transition-colors"

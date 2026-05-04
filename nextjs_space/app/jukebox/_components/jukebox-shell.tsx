@@ -50,6 +50,7 @@ function JukeboxInner() {
   const [stationFillPct, setStationFillPct] = useState(70);
   const [artistFillPct, setArtistFillPct] = useState(70);
   const [mixFillPct, setMixFillPct] = useState(70);
+  const [mixEditorFillPct, setMixEditorFillPct] = useState(70);
   const [bgStyle, setBgStyle] = useState<BgStyle>('none');
   const [bgMusicReactive, setBgMusicReactive] = useState(true);
   const settingsLoadedRef = useRef(false);
@@ -88,6 +89,7 @@ function JukeboxInner() {
         if (s.stationFillPct !== undefined) setStationFillPct(s.stationFillPct);
         if (s.artistFillPct !== undefined) setArtistFillPct(s.artistFillPct);
         if (s.mixFillPct !== undefined) setMixFillPct(s.mixFillPct);
+        if (s.mixEditorFillPct !== undefined) setMixEditorFillPct(s.mixEditorFillPct);
         if (s.bgStyle) setBgStyle(s.bgStyle);
         if (s.bgMusicReactive !== undefined) setBgMusicReactive(s.bgMusicReactive);
       }
@@ -114,6 +116,7 @@ function JukeboxInner() {
       setStationFillPct(s.stationFillPct ?? 70);
       setArtistFillPct(s.artistFillPct ?? 70);
       setMixFillPct(s.mixFillPct ?? 70);
+      setMixEditorFillPct(s.mixEditorFillPct ?? 70);
       settingsLoadedRef.current = true;
     }).catch(() => { settingsLoadedRef.current = true; });
   }, []);
@@ -125,7 +128,7 @@ function JukeboxInner() {
       idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout,
       artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight,
       artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth,
-      stationFillPct, artistFillPct, mixFillPct,
+      stationFillPct, artistFillPct, mixFillPct, mixEditorFillPct,
       bgStyle, bgMusicReactive,
     };
     // Always write to localStorage for fast reads
@@ -141,7 +144,7 @@ function JukeboxInner() {
         body: JSON.stringify(dbSettings),
       }).catch(() => {});
     }, 1000);
-  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight, artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth, stationFillPct, artistFillPct, mixFillPct, bgStyle, bgMusicReactive]);
+  }, [idleTimeout, eqBands, eqColorScheme, previousTrackCount, keyboardSize, columnLayout, artistRows, stationRows, lyricsZoom, jukeboxTitle, stationQueueSize, eqBarHeight, artistBioHeight, artistAlbumHeight, artistSimilarHeight, artistTrackWidth, stationFillPct, artistFillPct, mixFillPct, mixEditorFillPct, bgStyle, bgMusicReactive]);
 
   // Idle timeout logic
   const resetIdleTimer = useCallback(() => {
@@ -316,7 +319,7 @@ function JukeboxInner() {
         style={{ paddingBottom: eqBarHeight + 100 }}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} fillPct={stationFillPct} />}
-        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} stationRows={stationRows} fillPct={mixFillPct} artistFillPct={artistFillPct} />}
+        {view === 'mixes' && <MixesView onNavigate={navigate} stationQueueSize={stationQueueSize} stationRows={stationRows} fillPct={mixFillPct} artistFillPct={artistFillPct} artistRows={artistRows} mixEditorFillPct={mixEditorFillPct} />}
         {view === 'artists' && <ArtistsView onNavigate={navigate} artistRows={artistRows} fillPct={artistFillPct} />}
         {view === 'search' && <SearchView onNavigate={navigate} />}
         {view === 'now-playing' && (
@@ -388,6 +391,8 @@ function JukeboxInner() {
             onArtistFillPctChange={setArtistFillPct}
             mixFillPct={mixFillPct}
             onMixFillPctChange={setMixFillPct}
+            mixEditorFillPct={mixEditorFillPct}
+            onMixEditorFillPctChange={setMixEditorFillPct}
             bgStyle={bgStyle}
             onBgStyleChange={setBgStyle}
             bgMusicReactive={bgMusicReactive}

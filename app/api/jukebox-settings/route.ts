@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest) {
       'keyboardSize', 'columnLayout', 'artistRows', 'stationRows',
       'lyricsZoom', 'jukeboxTitle', 'stationQueueSize', 'eqBarHeight',
       'artistBioHeight', 'artistAlbumHeight', 'artistSimilarHeight', 'artistTrackWidth',
-      'stationFillPct', 'artistFillPct', 'mixFillPct',
+      'stationFillPct', 'artistFillPct', 'mixFillPct', 'mixEditorFillPct',
     ];
     const data: Record<string, any> = {};
     for (const key of allowed) {

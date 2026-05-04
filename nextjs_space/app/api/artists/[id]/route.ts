@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           where: { OR: [{ popularity: { gt: 0 } }, { playCount: { gt: 0 } }, { billboardPeak: { not: null } }] },
           take: 30,
         } : {
-          orderBy: [{ trackNumber: 'asc' }],
+          orderBy: [{ title: 'asc' }],
         },
       },
     });

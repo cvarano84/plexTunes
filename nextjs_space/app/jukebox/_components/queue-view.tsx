@@ -1,7 +1,7 @@
 "use client";
 
-import React from 'react';
-import { ArrowLeft, ListMusic, Play, Music2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, ListMusic, Play, Music2, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
@@ -20,6 +20,28 @@ function formatDuration(ms: number | null | undefined): string {
 
 export default function QueueView({ onBack }: QueueViewProps) {
   const { queue, currentTrack, playQueue } = usePlayer();
+  const [heartedIds, setHeartedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const ids = (queue ?? []).map(t => t.id).filter(Boolean);
+    if (ids.length === 0) return;
+    fetch('/api/tracks/heart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds: ids }) })
+      .then(r => r?.json?.())
+      .then(d => setHeartedIds(new Set(d?.heartedIds ?? [])))
+      .catch(() => {});
+  }, [queue]);
+
+  const toggleHeart = async (trackId: string) => {
+    try {
+      const res = await fetch('/api/tracks/heart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId }) });
+      const data = await res?.json?.();
+      setHeartedIds(prev => {
+        const next = new Set(prev);
+        if (data?.hearted) next.add(trackId); else next.delete(trackId);
+        return next;
+      });
+    } catch {}
+  };
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 py-6">
@@ -81,6 +103,13 @@ export default function QueueView({ onBack }: QueueViewProps) {
                     {track?.artistName ?? ''} • {track?.albumTitle ?? ''}
                   </p>
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleHeart(track?.id); }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                  title={heartedIds.has(track?.id) ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <Heart className={`w-4 h-4 ${heartedIds.has(track?.id) ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
+                </button>
                 <span className="text-xs text-muted-foreground">{formatDuration(track?.duration)}</span>
                 {!isCurrent && (
                   <button

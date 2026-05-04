@@ -70,11 +70,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (station.stationType === 'hits') {
       const minPop = station.minPopularity || 40;
 
-      // Build where clause — include tracks with popularity >= minPop OR null popularity (unscored)
+      // Build where clause — include tracks with popularity >= minPop, null popularity (unscored), or hearted
       const where: any = {
         OR: [
           { popularity: { gte: minPop } },
           { popularity: null },
+          { hearted: true },
         ],
       };
 

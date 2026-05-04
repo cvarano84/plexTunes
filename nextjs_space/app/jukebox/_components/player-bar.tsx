@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus, Moon } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus, Moon, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
@@ -75,6 +75,25 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
   const [qrOpen, setQrOpen] = useState(false);
   const [mobileUrl, setMobileUrl] = useState('');
   const qrTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [hearted, setHearted] = useState(false);
+
+  // Check heart status when track changes
+  useEffect(() => {
+    if (!currentTrack?.id) { setHearted(false); return; }
+    fetch('/api/tracks/heart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds: [currentTrack.id] }) })
+      .then(r => r?.json?.())
+      .then(d => setHearted((d?.heartedIds ?? []).includes(currentTrack.id)))
+      .catch(() => setHearted(false));
+  }, [currentTrack?.id]);
+
+  const toggleHeart = async () => {
+    if (!currentTrack?.id) return;
+    try {
+      const res = await fetch('/api/tracks/heart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrack.id }) });
+      const data = await res?.json?.();
+      setHearted(data?.hearted ?? false);
+    } catch {}
+  };
 
   useEffect(() => {
     // Build mobile URL from current page location
@@ -322,6 +341,15 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
               </p>
             </div>
             <ChevronUp className="w-4 h-4 text-muted-foreground ml-1 group-hover:text-primary transition-colors" />
+          </button>
+
+          {/* Heart toggle */}
+          <button
+            onClick={toggleHeart}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-secondary"
+            title={hearted ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Heart className={`w-5 h-5 transition-colors ${hearted ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
           </button>
 
           {/* Controls */}
