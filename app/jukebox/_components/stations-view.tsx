@@ -106,9 +106,13 @@ function StationCard({ station, onPlay, isPlaying, cardSize }: { station: any; o
   );
 }
 
+// Client-side cache — survives component unmount/remount during tab switching
+let _clientCache: { stations: any[]; fetchedAt: number } | null = null;
+const CLIENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export default function StationsView({ onNavigate, stationRows = 1, stationQueueSize = 5, fillPct = 70 }: StationsViewProps) {
-  const [stations, setStations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [stations, setStations] = useState<any[]>(_clientCache?.stations ?? []);
+  const [loading, setLoading] = useState(!_clientCache);
   const [playingStation, setPlayingStation] = useState<string | null>(null);
   const { playQueue, setCurrentStationId, setCurrentStationName } = usePlayer();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,26 +120,40 @@ export default function StationsView({ onNavigate, stationRows = 1, stationQueue
   const [cardSize, setCardSize] = useState(200);
 
   useEffect(() => {
+    const now = Date.now();
+    // If client cache is fresh enough, skip fetch
+    if (_clientCache && (now - _clientCache.fetchedAt) < CLIENT_CACHE_TTL) {
+      setStations(_clientCache.stations);
+      setLoading(false);
+      return;
+    }
     fetch('/api/stations')
       .then(r => r?.json?.())
       .then(data => {
-        setStations(data?.stations ?? []);
+        const s = data?.stations ?? [];
+        _clientCache = { stations: s, fetchedAt: Date.now() };
+        setStations(s);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
   // Calculate card size based on available vertical space and row count
+  const lastCardSizeRef = useRef(0);
   useEffect(() => {
     const calcSize = () => {
       const container = containerRef.current;
       if (!container) return;
       const available = container.clientHeight;
+      if (available < 10) return;
       const gap = 12;
       const totalGaps = (stationRows - 1) * gap;
       // Cards should fill ~70% of the available height per row
       const perRow = Math.max(120, Math.round((available - totalGaps) * (fillPct / 100) / stationRows));
-      setCardSize(perRow);
+      if (Math.abs(perRow - lastCardSizeRef.current) > 2) {
+        lastCardSizeRef.current = perRow;
+        setCardSize(perRow);
+      }
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);

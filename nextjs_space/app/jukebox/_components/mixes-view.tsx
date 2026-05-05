@@ -179,15 +179,20 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   }, [editing, allArtists.length]);
 
   // Card sizing (matches station card logic)
+  const lastCardSizeRef = useRef(0);
   useEffect(() => {
     const calcSize = () => {
       const container = containerRef.current;
       if (!container) return;
       const available = container.clientHeight;
+      if (available < 10) return;
       const gap = 12;
       const totalGaps = (stationRows - 1) * gap;
       const perRow = Math.max(120, Math.round((available - totalGaps) * (fillPct / 100) / stationRows));
-      setCardSize(perRow);
+      if (Math.abs(perRow - lastCardSizeRef.current) > 2) {
+        lastCardSizeRef.current = perRow;
+        setCardSize(perRow);
+      }
     };
     calcSize();
     const ro = new ResizeObserver(calcSize);
@@ -196,17 +201,24 @@ export default function MixesView({ onNavigate, stationQueueSize = 25, stationRo
   }, [mixes, stationRows, fillPct]);
 
   // Artist grid sizing for editor — match artist page fill logic
+  // Use a ref to prevent infinite resize loops (ResizeObserver → setState → re-render → resize → ...)
+  const lastArtistSizeRef = useRef(0);
   useEffect(() => {
     const calcArtistSize = () => {
       const container = artistScrollRef.current;
       if (!container) return;
       const available = container.clientHeight;
+      if (available < 10) return; // container not yet laid out
       const gap = 12;
       const labelHeight = 28; // name text below icon (match artists-view)
       const rows = artistRowsProp;
       const totalGaps = (rows - 1) * gap;
       const perRow = Math.max(40, Math.floor(((available - totalGaps) * (mixEditorFillPct / 100) / rows) - labelHeight));
-      setArtistItemSize(perRow);
+      // Only update if meaningfully different to break resize loops
+      if (Math.abs(perRow - lastArtistSizeRef.current) > 2) {
+        lastArtistSizeRef.current = perRow;
+        setArtistItemSize(perRow);
+      }
     };
     calcArtistSize();
     const ro = new ResizeObserver(calcArtistSize);

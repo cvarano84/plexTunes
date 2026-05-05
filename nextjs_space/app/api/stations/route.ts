@@ -111,30 +111,61 @@ async function artTracksForStation(station: any): Promise<ArtTrack[]> {
   );
 }
 
+// ── In-memory cache for station list + artwork ──
+// Art is regenerated once per day (24 hours). Station metadata (name, trackCount)
+// is re-fetched from DB each request but the expensive art queries are cached.
+const ART_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+let cachedStationArt: Map<string, { sampleArt: string[]; fetchedAt: number }> = new Map();
+// Also cache the full response for super-fast repeated loads (5-minute TTL)
+let cachedResponse: { data: any[]; fetchedAt: number } | null = null;
+const RESPONSE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export async function GET() {
   try {
+    const now = Date.now();
+
+    // If we have a full cached response less than 5 minutes old, return it instantly
+    if (cachedResponse && (now - cachedResponse.fetchedAt) < RESPONSE_TTL_MS) {
+      return NextResponse.json({ stations: cachedResponse.data });
+    }
+
     const stations = await prisma.station.findMany({
       where: { isActive: true },
       orderBy: [{ decade: 'asc' }, { genre: 'asc' }],
     });
 
-    // Per-station targeted queries. Serial to keep DB connection pressure low.
+    // Build response using cached art where available
     const stationsWithArt: any[] = [];
     for (const station of stations ?? []) {
-      try {
-        const tracks = await artTracksForStation(station);
-        const targetCount = tracks.length >= 30 ? 9 : 4;
-        const sampleArt = pickArt(tracks, targetCount);
+      const cached = cachedStationArt.get(station.id);
+      if (cached && (now - cached.fetchedAt) < ART_TTL_MS) {
+        // Use cached artwork — skip expensive DB queries
         stationsWithArt.push({
           ...station,
-          sampleArt,
-          trackCount: station.trackCount ?? tracks.length,
+          sampleArt: cached.sampleArt,
+          trackCount: station.trackCount ?? 0,
         });
-      } catch (err: any) {
-        console.error(`Stations art error for ${station?.id}:`, err?.message);
-        stationsWithArt.push({ ...station, sampleArt: [] });
+      } else {
+        // Generate fresh artwork for this station
+        try {
+          const tracks = await artTracksForStation(station);
+          const targetCount = tracks.length >= 30 ? 9 : 4;
+          const sampleArt = pickArt(tracks, targetCount);
+          cachedStationArt.set(station.id, { sampleArt, fetchedAt: now });
+          stationsWithArt.push({
+            ...station,
+            sampleArt,
+            trackCount: station.trackCount ?? tracks.length,
+          });
+        } catch (err: any) {
+          console.error(`Stations art error for ${station?.id}:`, err?.message);
+          stationsWithArt.push({ ...station, sampleArt: cached?.sampleArt ?? [] });
+        }
       }
     }
+
+    // Cache the full response
+    cachedResponse = { data: stationsWithArt, fetchedAt: now };
 
     return NextResponse.json({ stations: stationsWithArt });
   } catch (e: any) {

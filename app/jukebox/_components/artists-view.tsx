@@ -57,6 +57,7 @@ export default function ArtistsView({ onNavigate, artistRows = 4, fillPct = 70 }
     el.scrollBy({ left: dir === 'left' ? -(itemSize + 12) * 3 : (itemSize + 12) * 3, behavior: 'smooth' });
   };
 
+  const lastItemSizeRef = useRef(0);
   useEffect(() => {
     const calcSize = () => {
       // Use scrollRef (the flex-1 grid area) for actual available height
@@ -68,7 +69,10 @@ export default function ArtistsView({ onNavigate, artistRows = 4, fillPct = 70 }
       const labelHeight = 28; // artist name + album count text
       const totalGaps = (artistRows - 1) * gapSize;
       const perRow = Math.max(80, Math.floor(((available - totalGaps) * (fillPct / 100) / artistRows) - labelHeight));
-      setItemSize(perRow);
+      if (Math.abs(perRow - lastItemSizeRef.current) > 2) {
+        lastItemSizeRef.current = perRow;
+        setItemSize(perRow);
+      }
     };
     calcSize();
     // Observe both — outer for panel resize, inner for layout completion
