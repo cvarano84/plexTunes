@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus, Moon, Heart } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Music2, ListMusic, ChevronUp, Smartphone, X, Waves, PartyPopper, Minus, Plus, Moon, Heart, ThumbsDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { usePlayer } from '@/lib/player-context';
 import type { ViewType } from './jukebox-shell';
 import PlexImage from './plex-image';
@@ -92,6 +93,20 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
       const res = await fetch('/api/tracks/heart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrack.id }) });
       const data = await res?.json?.();
       setHearted(data?.hearted ?? false);
+    } catch {}
+  };
+
+  const banCurrentTrack = async () => {
+    if (!currentTrack?.id) return;
+    try {
+      const res = await fetch('/api/tracks/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrack.id }) });
+      const data = await res?.json?.();
+      if (data?.banned) {
+        toast.success(`Banned "${currentTrack.title}"`);
+        nextTrack();
+      } else {
+        toast.success(`Unbanned "${currentTrack.title}"`);
+      }
     } catch {}
   };
 
@@ -350,6 +365,15 @@ export default function PlayerBar({ onNavigate, eqBands = 32, eqColorScheme = 'c
             title={hearted ? 'Remove from favorites' : 'Add to favorites'}
           >
             <Heart className={`w-5 h-5 transition-colors ${hearted ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
+          </button>
+
+          {/* Ban (thumbs down) toggle */}
+          <button
+            onClick={banCurrentTrack}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-red-500/20"
+            title="Ban this song"
+          >
+            <ThumbsDown className="w-5 h-5 text-muted-foreground hover:text-red-500 transition-colors" />
           </button>
 
           {/* Controls */}
