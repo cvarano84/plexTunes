@@ -21,7 +21,7 @@ async function getStationTracks(station: any, perStationLimit: number): Promise<
 
   if (station.stationType === 'most-played') {
     const topPlayed = await prisma.cachedTrack.findMany({
-      where: { playCount: { gt: 0 } },
+      where: { playCount: { gt: 0 }, banned: false },
       orderBy: [{ playCount: 'desc' }, { lastPlayedAt: 'desc' }],
       take: 100,
       include,
@@ -36,7 +36,7 @@ async function getStationTracks(station: any, perStationLimit: number): Promise<
 
   if (station.stationType === 'hits') {
     const minPop = station.minPopularity || 40;
-    const where: any = { popularity: { gte: minPop } };
+    const where: any = { popularity: { gte: minPop }, banned: false };
     if (station.decade) {
       const decadeNum = parseInt(station.decade, 10);
       if (!isNaN(decadeNum)) {
@@ -67,7 +67,7 @@ async function getStationTracks(station: any, perStationLimit: number): Promise<
 
   // Standard station: match by decade AND genre
   const allTracks = await prisma.cachedTrack.findMany({
-    where: { year: { not: null } },
+    where: { year: { not: null }, banned: false },
     include,
   });
   const matching = allTracks.filter((t: any) => {
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     // Get tracks from emphasized artists
     if (mix.artistIds?.length > 0) {
-      const artistWhere: any = { artistId: { in: mix.artistIds } };
+      const artistWhere: any = { artistId: { in: mix.artistIds }, banned: false };
       if (mix.popularOnly) {
         artistWhere.popularity = { gte: 1 };
       }

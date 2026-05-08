@@ -16,11 +16,12 @@ import AlbumDetailView from './album-detail-view';
 import QueueView from './queue-view';
 import SettingsView from './settings-view';
 import StatsView from './stats-view';
+import BannedView from './banned-view';
 import MixesView from './mixes-view';
 import TouchKeyboard from './touch-keyboard';
 import AnimatedBackground, { type BgStyle } from './animated-background';
 
-export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats' | 'mixes';
+export type ViewType = 'stations' | 'artists' | 'search' | 'now-playing' | 'artist-detail' | 'album-detail' | 'queue' | 'settings' | 'stats' | 'mixes' | 'banned';
 
 function JukeboxInner() {
   const router = useRouter();
@@ -315,7 +316,7 @@ function JukeboxInner() {
       <JukeboxNav currentView={view} onNavigate={(v: ViewType) => { setViewHistory([]); setView(v); }} />
       
       <main
-        className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'mixes' || view === 'artists' || view === 'stats' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+        className={`flex-1 min-h-0 ${view === 'now-playing' || view === 'stations' || view === 'mixes' || view === 'artists' || view === 'stats' ? 'overflow-hidden' : 'overflow-y-auto scrollbar-none'}`}
         style={{ paddingBottom: eqBarHeight + 100 }}
       >
         {view === 'stations' && <StationsView onNavigate={navigate} stationRows={stationRows} stationQueueSize={stationQueueSize} fillPct={stationFillPct} />}
@@ -351,6 +352,7 @@ function JukeboxInner() {
         )}
         {view === 'queue' && <QueueView onBack={goBack} />}
         {view === 'stats' && <StatsView />}
+        {view === 'banned' && <BannedView />}
         {view === 'settings' && (
           <SettingsView
             idleTimeout={idleTimeout}

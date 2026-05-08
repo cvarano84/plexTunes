@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     // Handle "most-played" station type
     if (station.stationType === 'most-played') {
       const topPlayed = await prisma.cachedTrack.findMany({
-        where: { playCount: { gt: 0 } },
+        where: { playCount: { gt: 0 }, banned: false },
         orderBy: [{ playCount: 'desc' }, { lastPlayedAt: 'desc' }],
         take: 100,
         include: {
@@ -71,7 +71,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       const minPop = station.minPopularity || 40;
 
       // Build where clause — include tracks with popularity >= minPop, null popularity (unscored), or hearted
+      // Always exclude banned tracks
       const where: any = {
+        banned: false,
         OR: [
           { popularity: { gte: minPop } },
           { popularity: null },
@@ -124,7 +126,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     // Standard station: match by decade AND genre (with album genre fallback)
     const allTracks = await prisma.cachedTrack.findMany({
-      where: { year: { not: null } },
+      where: { year: { not: null }, banned: false },
       include: {
         artist: { select: { name: true, thumb: true } },
         album: { select: { title: true, thumb: true, year: true, genre: true } },

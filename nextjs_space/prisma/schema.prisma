@@ -88,6 +88,7 @@ model CachedTrack {
   bpm             Float?
   bpmChecked      Boolean       @default(false)
   hearted         Boolean       @default(false)
+  banned          Boolean       @default(false)
   syncedLyrics    String?       // LRC format time-synced lyrics
   plainLyrics     String?       // plain text lyrics (fallback)
   lyricsCheckedAt DateTime?     // when lyrics were last searched
@@ -102,6 +103,7 @@ model CachedTrack {
   @@index([playCount])
   @@index([billboardPeak])
   @@index([hearted])
+  @@index([banned])
 }
 
 model Station {

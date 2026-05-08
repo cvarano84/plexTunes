@@ -66,6 +66,7 @@ interface PlayerContextType extends PlayerState {
   playQueue: (tracks: TrackInfo[], startIndex?: number) => void;
   addToQueue: (track: TrackInfo) => void;
   playNext: (track: TrackInfo) => void;
+  removeFromQueue: (index: number) => void;
   nextTrack: () => void;
   prevTrack: () => void;
   togglePlay: () => void;
@@ -455,6 +456,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return copy;
     });
   }, [queueIndex]);
+
+  const removeFromQueue = useCallback((index: number) => {
+    setQueue(prev => {
+      if (index < 0 || index >= prev.length) return prev;
+      const copy = [...prev];
+      copy.splice(index, 1);
+      return copy;
+    });
+    // Adjust queueIndex if we removed before or at the current track
+    setQueueIndex(prev => {
+      if (index < prev) return prev - 1;
+      return prev;
+    });
+  }, []);
 
   const setEqGain = useCallback((band: keyof EqGains, value: number) => {
     const nodes = eqNodesRef.current;
@@ -884,6 +899,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         playQueue,
         addToQueue,
         playNext,
+        removeFromQueue,
         nextTrack,
         prevTrack,
         togglePlay,

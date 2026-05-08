@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Music2, Loader2, Mic2, ListMusic, Play, History, Disc3, User, Album } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Music2, Loader2, Mic2, ListMusic, Play, History, Disc3, User, Album, ThumbsDown, X } from 'lucide-react';
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
+import { toast } from 'sonner';
 import PlexImage from './plex-image';
 
 function formatDuration(ms: number | null | undefined): string {
@@ -180,6 +181,84 @@ function KaraokeLyrics({ lyrics, syncedLyrics, currentTime, duration, zoom = 3 }
   );
 }
 
+// Swipeable queue item with reveal actions (ban / remove)
+function SwipeableQueueItem({
+  track, index, onPlay, onBan, onRemove,
+}: {
+  track: TrackInfo; index: number;
+  onPlay: () => void; onBan: () => void; onRemove: () => void;
+}) {
+  const x = useMotionValue(0);
+  const [revealed, setRevealed] = useState(false);
+  const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const REVEAL_WIDTH = 120; // px the row slides to show action buttons
+
+  const clearAutoHide = () => { if (autoHideRef.current) { clearTimeout(autoHideRef.current); autoHideRef.current = null; } };
+  const startAutoHide = () => { clearAutoHide(); autoHideRef.current = setTimeout(() => { animate(x, 0, { type: 'spring', stiffness: 300, damping: 30 }); setRevealed(false); }, 3000); };
+
+  useEffect(() => () => clearAutoHide(), []);
+
+  const handleDragEnd = (_: any, info: { offset: { x: number }; velocity: { x: number } }) => {
+    const swipedLeft = info.offset.x < -40 || info.velocity.x < -300;
+    if (swipedLeft && !revealed) {
+      animate(x, -REVEAL_WIDTH, { type: 'spring', stiffness: 300, damping: 30 });
+      setRevealed(true);
+      startAutoHide();
+    } else {
+      animate(x, 0, { type: 'spring', stiffness: 300, damping: 30 });
+      setRevealed(false);
+      clearAutoHide();
+    }
+  };
+
+  const closeReveal = () => { animate(x, 0, { type: 'spring', stiffness: 300, damping: 30 }); setRevealed(false); clearAutoHide(); };
+
+  return (
+    <div className="relative overflow-hidden">
+      {/* Action buttons behind the row */}
+      <div className="absolute right-0 top-0 bottom-0 flex items-stretch" style={{ width: REVEAL_WIDTH }}>
+        <button
+          onClick={() => { onBan(); closeReveal(); }}
+          className="flex-1 flex flex-col items-center justify-center bg-red-600 hover:bg-red-500 transition-colors"
+          title="Ban song"
+        >
+          <ThumbsDown className="w-4 h-4 text-white" />
+          <span className="text-[0.6rem] text-white mt-0.5">Ban</span>
+        </button>
+        <button
+          onClick={() => { onRemove(); closeReveal(); }}
+          className="flex-1 flex flex-col items-center justify-center bg-orange-600 hover:bg-orange-500 transition-colors"
+          title="Remove once"
+        >
+          <X className="w-4 h-4 text-white" />
+          <span className="text-[0.6rem] text-white mt-0.5">Remove</span>
+        </button>
+      </div>
+
+      {/* Draggable row */}
+      <motion.button
+        style={{ x }}
+        drag="x"
+        dragConstraints={{ left: -REVEAL_WIDTH, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        onClick={() => { if (!revealed) onPlay(); }}
+        className="flex items-center gap-3 px-4 py-[clamp(0.5rem,1vh,0.75rem)] hover:bg-secondary/50 transition-colors w-full text-left relative bg-background"
+      >
+        <span className="w-[clamp(1.25rem,1.8vw,1.75rem)] text-center text-[clamp(0.75rem,1.1vw,1rem)] text-muted-foreground">{index + 1}</span>
+        <div className="w-[clamp(2.5rem,4vw,4rem)] h-[clamp(2.5rem,4vw,4rem)] rounded-lg overflow-hidden bg-secondary flex-shrink-0">
+          <PlexImage thumb={track?.thumb} alt={track?.title ?? ''} size={120} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[clamp(0.875rem,1.3vw,1.125rem)] font-medium truncate">{track?.title ?? ''}</p>
+          <p className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
+        </div>
+        <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground">{formatDuration(track?.duration)}</span>
+      </motion.button>
+    </div>
+  );
+}
+
 interface NowPlayingViewProps {
   previousTrackCount?: number;
   columnLayout?: string;
@@ -190,7 +269,7 @@ interface NowPlayingViewProps {
 export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 'balanced', lyricsZoom = 3, onNavigate }: NowPlayingViewProps) {
   const {
     currentTrack, isPlaying, queue, queueIndex, currentTime, duration,
-    playQueue
+    playQueue, removeFromQueue
   } = usePlayer();
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [syncedLyrics, setSyncedLyrics] = useState<string | null>(null);
@@ -457,23 +536,31 @@ export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 
               </div>
             ) : (
               <div className="divide-y divide-border/10">
-                {visibleUpcoming.map((track: TrackInfo, i: number) => (
-                  <button
-                    key={`${track.id}-${i}`}
-                    onClick={() => playQueue(queue, queueIndex + 1 + i)}
-                    className="flex items-center gap-3 px-4 py-[clamp(0.5rem,1vh,0.75rem)] hover:bg-secondary/50 transition-colors w-full text-left"
-                  >
-                    <span className="w-[clamp(1.25rem,1.8vw,1.75rem)] text-center text-[clamp(0.75rem,1.1vw,1rem)] text-muted-foreground">{i + 1}</span>
-                    <div className="w-[clamp(2.5rem,4vw,4rem)] h-[clamp(2.5rem,4vw,4rem)] rounded-lg overflow-hidden bg-secondary flex-shrink-0">
-                      <PlexImage thumb={track?.thumb} alt={track?.title ?? ''} size={120} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[clamp(0.875rem,1.3vw,1.125rem)] font-medium truncate">{track?.title ?? ''}</p>
-                      <p className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground truncate">{track?.artistName ?? ''}</p>
-                    </div>
-                    <span className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground">{formatDuration(track?.duration)}</span>
-                  </button>
-                ))}
+                {visibleUpcoming.map((track: TrackInfo, i: number) => {
+                  const realIdx = queueIndex + 1 + i;
+                  return (
+                    <SwipeableQueueItem
+                      key={`${track.id}-${i}`}
+                      track={track}
+                      index={i}
+                      onPlay={() => playQueue(queue, realIdx)}
+                      onBan={async () => {
+                        try {
+                          const res = await fetch('/api/tracks/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: track.id }) });
+                          const data = await res?.json?.();
+                          if (data?.banned) {
+                            toast.success(`Banned "${track.title}"`);
+                            removeFromQueue(realIdx);
+                          }
+                        } catch {}
+                      }}
+                      onRemove={() => {
+                        removeFromQueue(realIdx);
+                        toast.success(`Removed "${track.title}" from queue`);
+                      }}
+                    />
+                  );
+                })}
                 {remainingUpcoming.length > 0 && (
                   <div className="px-4 py-3 text-center">
                     <p className="text-[clamp(0.7rem,1vw,0.875rem)] text-muted-foreground">+ {remainingUpcoming.length} more</p>

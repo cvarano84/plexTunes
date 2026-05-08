@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ListMusic, Play, Music2, Heart } from 'lucide-react';
+import { ArrowLeft, ListMusic, Play, Music2, Heart, ThumbsDown, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayer, TrackInfo } from '@/lib/player-context';
 import PlexImage from './plex-image';
+import { toast } from 'sonner';
 
 interface QueueViewProps {
   onBack: () => void;
@@ -19,15 +20,22 @@ function formatDuration(ms: number | null | undefined): string {
 }
 
 export default function QueueView({ onBack }: QueueViewProps) {
-  const { queue, currentTrack, playQueue } = usePlayer();
+  const { queue, currentTrack, playQueue, removeFromQueue, queueIndex } = usePlayer();
   const [heartedIds, setHeartedIds] = useState<Set<string>>(new Set());
+  const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const ids = (queue ?? []).map(t => t.id).filter(Boolean);
     if (ids.length === 0) return;
+    // Fetch hearted
     fetch('/api/tracks/heart', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds: ids }) })
       .then(r => r?.json?.())
       .then(d => setHeartedIds(new Set(d?.heartedIds ?? [])))
+      .catch(() => {});
+    // Fetch banned
+    fetch('/api/tracks/ban', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackIds: ids }) })
+      .then(r => r?.json?.())
+      .then(d => setBannedIds(new Set(d?.bannedIds ?? [])))
       .catch(() => {});
   }, [queue]);
 
@@ -41,6 +49,30 @@ export default function QueueView({ onBack }: QueueViewProps) {
         return next;
       });
     } catch {}
+  };
+
+  const toggleBan = async (trackId: string, trackTitle: string, queueIdx: number) => {
+    try {
+      const res = await fetch('/api/tracks/ban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId }) });
+      const data = await res?.json?.();
+      setBannedIds(prev => {
+        const next = new Set(prev);
+        if (data?.banned) next.add(trackId); else next.delete(trackId);
+        return next;
+      });
+      if (data?.banned) {
+        toast.success(`Banned "${trackTitle}"`);
+        // Also remove from queue
+        removeFromQueue(queueIdx);
+      } else {
+        toast.success(`Unbanned "${trackTitle}"`);
+      }
+    } catch {}
+  };
+
+  const handleRemove = (index: number, trackTitle: string) => {
+    removeFromQueue(index);
+    toast.success(`Removed "${trackTitle}" from queue`);
   };
 
   return (
@@ -110,6 +142,24 @@ export default function QueueView({ onBack }: QueueViewProps) {
                 >
                   <Heart className={`w-4 h-4 ${heartedIds.has(track?.id) ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
                 </button>
+                {!isCurrent && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleBan(track?.id, track?.title ?? '', i); }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 hover:bg-red-500/20"
+                    title="Ban this song"
+                  >
+                    <ThumbsDown className={`w-4 h-4 ${bannedIds.has(track?.id) ? 'fill-red-500 text-red-500' : 'text-muted-foreground'}`} />
+                  </button>
+                )}
+                {!isCurrent && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRemove(i, track?.title ?? ''); }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 hover:bg-red-500/20"
+                    title="Remove from queue"
+                  >
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                )}
                 <span className="text-xs text-muted-foreground">{formatDuration(track?.duration)}</span>
                 {!isCurrent && (
                   <button

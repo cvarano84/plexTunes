@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Radio, Users, Search, Music2, BarChart3, Disc3 } from 'lucide-react';
+import { Radio, Users, Search, Music2, BarChart3, Disc3, ThumbsDown } from 'lucide-react';
 import type { ViewType } from './jukebox-shell';
 import { usePlayer } from '@/lib/player-context';
 
@@ -17,6 +17,7 @@ const navItems: Array<{ view: ViewType; label: string; icon: React.ElementType }
   { view: 'search', label: 'Search', icon: Search },
   { view: 'now-playing', label: 'Now Playing', icon: Music2 },
   { view: 'stats', label: 'Top Played', icon: BarChart3 },
+  { view: 'banned', label: 'Banned', icon: ThumbsDown },
 ];
 
 export default function JukeboxNav({ currentView, onNavigate }: JukeboxNavProps) {
