@@ -303,6 +303,30 @@ export default function NowPlayingView({ previousTrackCount = 3, columnLayout = 
       .finally(() => setLyricsLoading(false));
   }, [currentTrack?.title, currentTrack?.artistName, currentTrack?.albumTitle, currentTrack?.duration]);
 
+  // Pre-fetch lyrics for upcoming tracks in the queue so they're cached when needed
+  const prefetchedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (queueIndex < 0 || queue.length === 0) return;
+    const upcoming = queue.slice(queueIndex + 1, queueIndex + 11); // next 10 tracks
+    const toFetch = upcoming.filter(t => t.id && t.title && t.artistName && !prefetchedRef.current.has(t.id));
+    if (toFetch.length === 0) return;
+    // Mark as prefetch-requested immediately to avoid duplicate calls
+    toFetch.forEach(t => prefetchedRef.current.add(t.id));
+    fetch('/api/lyrics/prefetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tracks: toFetch.map(t => ({
+          id: t.id,
+          title: t.title,
+          artistName: t.artistName,
+          albumTitle: t.albumTitle,
+          duration: t.duration,
+        })),
+      }),
+    }).catch(() => {});
+  }, [queue, queueIndex]);
+
   // Fetch track summary from Wikipedia (cached in DB)
   useEffect(() => {
     setTrackSummary('');
