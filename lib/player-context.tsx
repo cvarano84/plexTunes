@@ -446,16 +446,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addToQueue = useCallback((track: TrackInfo) => {
+    if (!currentTrack || queueIndex < 0) {
+      playTrack(track);
+      return;
+    }
     setQueue(prev => [...(prev ?? []), track]);
-  }, []);
+  }, [currentTrack, playTrack, queueIndex]);
 
   const playNext = useCallback((track: TrackInfo) => {
+    if (!currentTrack || queueIndex < 0) {
+      playTrack(track);
+      return;
+    }
     setQueue(prev => {
       const copy = [...(prev ?? [])];
       copy.splice(queueIndex + 1, 0, track);
       return copy;
     });
-  }, [queueIndex]);
+  }, [currentTrack, playTrack, queueIndex]);
 
   const removeFromQueue = useCallback((index: number) => {
     setQueue(prev => {
